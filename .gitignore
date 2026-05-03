@@ -1,0 +1,26 @@
+# User added references
+.references/
+
+# IDE files
+.vscode/
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build outputs
+bin/
+obj/
+publish/
+
+# Logs
+logs/
+*.log
+
+# Secrets
+appsettings.json
+appsettings.Development.json
+
+# Tooling
+.gemini/
+.antigravity/
