@@ -38,6 +38,8 @@ public static class Program
 
         // Configure Logging
         Log.Logger = new LoggerConfiguration()
+            .ReadFrom.Configuration(builder.Configuration)
+            .Enrich.FromLogContext()
             .WriteTo.Console()
             .WriteTo.File(Path.Combine(baseDir, "logs", "mqtt-agent.log"), rollingInterval: RollingInterval.Day)
             .CreateLogger();
@@ -122,10 +124,11 @@ public static class Program
         if (isService)
         {
             builder.Host.UseWindowsService();
-            builder.Services.AddHostedService(p => p.GetRequiredService<SystemMonitorService>());
-            builder.Services.AddHostedService(p => p.GetRequiredService<NotificationReceiverService>());
-            builder.Services.AddHostedService(p => p.GetRequiredService<ActionExecutorService>());
         }
+        
+        builder.Services.AddHostedService(p => p.GetRequiredService<SystemMonitorService>());
+        builder.Services.AddHostedService(p => p.GetRequiredService<NotificationReceiverService>());
+        builder.Services.AddHostedService(p => p.GetRequiredService<ActionExecutorService>());
         
         // Always run MQTT if we aren't JUST a helper
         builder.Services.AddHostedService(p => (MqttManager)p.GetRequiredService<IMqttManager>());

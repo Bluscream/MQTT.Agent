@@ -33,7 +33,7 @@ namespace MqttAgent.Services
             _logger = logger;
             _options = options.Value;
 
-            UniqueId = $"{Environment.MachineName.ToLowerInvariant()}_status";
+            UniqueId = Environment.MachineName.ToLowerInvariant();
             
             var rawName = _options.EntityId ?? Environment.MachineName.ToLowerInvariant().Replace("-", "_").Replace(" ", "_");
             EntityId = rawName.EndsWith("_action") ? rawName : $"{rawName}_action";

@@ -53,7 +53,9 @@ function Bump-Version {
 if ($Stop) {
     Write-Host "Stopping MQTT Agent Service..." -ForegroundColor Cyan
     if (Get-Service $ServiceName -ErrorAction SilentlyContinue) {
-        Stop-Service $ServiceName -Force -ErrorAction SilentlyContinue
+        Write-Host "Stopping service via sudo..." -ForegroundColor Gray
+        sudo sc.exe stop $ServiceName
+        Start-Sleep -Seconds 2
     }
 
     Write-Host "Killing MQTT Agent processes..." -ForegroundColor Cyan
@@ -130,22 +132,21 @@ if ($Install) {
     Write-Host "Ensuring service is registered..." -ForegroundColor Cyan
     $TargetExe = if ($Deploy) { $DeployPath } else { $ExePath }
     if (-not (Get-Service $ServiceName -ErrorAction SilentlyContinue)) {
-        New-Service -Name $ServiceName -BinaryPathName "$TargetExe --service -token $Token" -DisplayName "MQTT Agent Service" -StartupType Automatic
+        Write-Host "Creating service via sudo..." -ForegroundColor Gray
+        sudo sc.exe create $ServiceName binPath= "$TargetExe --service -token $Token" start= auto DisplayName= "MQTT Agent"
     } else {
-        sc.exe config $ServiceName binPath= "$TargetExe --service -token $Token"
+        Write-Host "Updating service config via sudo..." -ForegroundColor Gray
+        sudo sc.exe config $ServiceName binPath= "$TargetExe --service -token $Token"
     }
 
     Write-Host "Ensuring firewall rule for port $Port..." -ForegroundColor Cyan
     $RuleName = "MQTT Agent"
-    if (Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue) {
-        Remove-NetFirewallRule -DisplayName $RuleName
-    }
-    New-NetFirewallRule -DisplayName $RuleName -Direction Inbound -Program $TargetExe -Action Allow -LocalPort $Port -Protocol TCP
+    sudo powershell -Command "if (Get-NetFirewallRule -DisplayName '$RuleName' -ErrorAction SilentlyContinue) { Remove-NetFirewallRule -DisplayName '$RuleName' }; New-NetFirewallRule -DisplayName '$RuleName' -Direction Inbound -Program '$TargetExe' -Action Allow -LocalPort $Port -Protocol TCP"
 }
 
 if ($Start) {
-    Write-Host "Starting MQTT Agent..." -ForegroundColor Cyan
-    Start-Service $ServiceName -ErrorAction SilentlyContinue
+    Write-Host "Starting MQTT Agent Service via sudo..." -ForegroundColor Cyan
+    sudo sc.exe start $ServiceName
     $TargetExe = if (Test-Path $DeployPath) { $DeployPath } else { $ExePath }
     Start-Process $TargetExe -ArgumentList "-tray", "-token", $Token
 }

@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using MqttAgent.Utils;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using LibreHardwareMonitor.Hardware;
 
 namespace MqttAgent.Services
 {
@@ -19,16 +20,16 @@ namespace MqttAgent.Services
         private readonly IMqttManager _mqtt;
         private readonly ILogger<SystemMonitorService> _logger;
         private readonly IDiscoveryService _discovery;
-        private string _lastState = string.Empty;
+        private string _lastState = "unknown";
+        private int _updateIntervalSeconds = 60;
+        private DateTime _idleStartTime = DateTime.MaxValue;
         private bool _isUpdating = false;
         private EventLogWatcher? _updateWatcher;
         private ManagementEventWatcher? _arrivalWatcher;
         private ManagementEventWatcher? _removalWatcher;
         
-        // Performance Counters
-        private PerformanceCounter? _cpuCounter;
-        private List<PerformanceCounter> _gpuCounters = new();
-        private DateTime _idleStartTime = DateTime.MaxValue;
+        // LibreHardwareMonitor
+        private readonly Computer _computer;
         private const int IdleThresholdSeconds = 900;
         private const float UsageThreshold = 50.0f;
 
@@ -37,8 +38,16 @@ namespace MqttAgent.Services
             _mqtt = mqtt;
             _discovery = discovery;
             _logger = logger;
+
+            _computer = new Computer
+            {
+                IsCpuEnabled = true,
+                IsGpuEnabled = true,
+                IsMemoryEnabled = true
+            };
+            _computer.Open();
+
             SetupUpdateMonitoring();
-            SetupHardwareCounters();
             SetupDeviceMonitoring();
         }
 
@@ -124,31 +133,7 @@ namespace MqttAgent.Services
             await _mqtt.EnqueueAsync($"homeassistant/sensor/{_mqtt.UniqueId}_event/state", JsonSerializer.Serialize(payload), false);
         }
 
-        private void SetupHardwareCounters()
-        {
-            try
-            {
-                _cpuCounter = new PerformanceCounter("Processor Information", "% Processor Utility", "_Total");
-                _cpuCounter.NextValue(); // First reading is always 0
-                
-                // Fetch GPU 3D engine counters
-                var gpuCategory = new PerformanceCounterCategory("GPU Engine");
-                var instances = gpuCategory.GetInstanceNames().Where(i => i.EndsWith("engtype_3D", StringComparison.OrdinalIgnoreCase));
-                
-                foreach (var inst in instances)
-                {
-                    var pc = new PerformanceCounter("GPU Engine", "Utilization Percentage", inst);
-                    pc.NextValue(); // First reading is always 0
-                    _gpuCounters.Add(pc);
-                }
-                
-                _logger.LogInformation("Hardware counters initialized (CPU and {Count} GPU engines).", _gpuCounters.Count);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning("Could not initialize hardware counters: {Message}", ex.Message);
-            }
-        }
+        private void SetupHardwareCounters() { } // Deprecated
 
         public async void HandleSessionChange(int sessionId, SessionChangeReason reason)
         {
@@ -176,6 +161,18 @@ namespace MqttAgent.Services
 
                 if (stoppingToken.IsCancellationRequested) return;
 
+                // Subscribe to command topic
+                await _mqtt.SubscribeAsync($"homeassistant/number/{_mqtt.UniqueId}_update_interval/set", e =>
+                {
+                    var payload = System.Text.Encoding.UTF8.GetString(e.ApplicationMessage.PayloadSegment);
+                    if (int.TryParse(payload, out int val) && val >= 1 && val <= 3600)
+                    {
+                        _updateIntervalSeconds = val;
+                        _logger.LogInformation("Update interval changed to {Val}s", val);
+                    }
+                    return Task.CompletedTask;
+                });
+
                 // Initial Discovery and State report
                 await _discovery.PublishDiscoveryAsync();
                 _lastState = "unknown";
@@ -189,7 +186,7 @@ namespace MqttAgent.Services
                 while (!stoppingToken.IsCancellationRequested)
                 {
                     await UpdateState();
-                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                    await Task.Delay(TimeSpan.FromSeconds(_updateIntervalSeconds), stoppingToken);
                 }
             }
             catch (OperationCanceledException)
@@ -251,16 +248,24 @@ namespace MqttAgent.Services
 
         private bool CheckIdle()
         {
-            if (_cpuCounter == null) return false;
-
             try
             {
-                float cpuUsage = _cpuCounter.NextValue();
+                float cpuUsage = 0;
                 float gpuUsage = 0;
-                
-                foreach (var counter in _gpuCounters)
+
+                foreach (var hardware in _computer.Hardware)
                 {
-                    try { gpuUsage = Math.Max(gpuUsage, counter.NextValue()); } catch { }
+                    hardware.Update();
+                    if (hardware.HardwareType == HardwareType.Cpu)
+                    {
+                        var sensor = hardware.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Load && s.Name == "CPU Total");
+                        if (sensor != null) cpuUsage = sensor.Value ?? 0;
+                    }
+                    else if (hardware.HardwareType == HardwareType.GpuNvidia || hardware.HardwareType == HardwareType.GpuAmd || hardware.HardwareType == HardwareType.GpuIntel)
+                    {
+                        var sensor = hardware.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Load && s.Name == "GPU Core");
+                        if (sensor != null) gpuUsage = Math.Max(gpuUsage, sensor.Value ?? 0);
+                    }
                 }
 
                 if (cpuUsage < UsageThreshold && gpuUsage < UsageThreshold)
@@ -287,21 +292,216 @@ namespace MqttAgent.Services
         {
             var uniqueId = _mqtt.UniqueId;
             var attrTopic = $"homeassistant/select/{uniqueId}/attributes";
+
+            // Collect ALL power sensor values across all hardware for total_power calculation
+            var allPowerReadings = new System.Collections.Generic.List<(string source, float watts)>();
+            // Store deferred publishes so we can patch CPU attrs after the loop
+            var deferredPublishes = new System.Collections.Generic.List<(string typeKey, string sensorTopic, string sensorAttrTopic, string hwName, Dictionary<string, object> attrs)>();
             
+            foreach (var hardware in _computer.Hardware)
+            {
+                hardware.Update();
+                var hwName = hardware.Name;
+                if (hardware.HardwareType == HardwareType.Memory)
+                {
+                    if (hwName == "Virtual Memory") continue;
+                    try
+                    {
+                        using (var searcher = new System.Management.ManagementObjectSearcher("SELECT PartNumber FROM Win32_PhysicalMemory"))
+                        {
+                            var sticks = searcher.Get()
+                                .Cast<System.Management.ManagementObject>()
+                                .Select(obj => obj["PartNumber"]?.ToString()?.Trim())
+                                .Where(s => !string.IsNullOrWhiteSpace(s))
+                                .OrderBy(s => s)
+                                .ToList();
+                            
+                            if (sticks.Any())
+                            {
+                                hwName = string.Join("\n", sticks);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to fetch RAM stick names from WMI.");
+                    }
+                }
+
+                float usage = 0, temp = 0, used = 0, free = 0, total = 0, power = 0;
+                bool hasData = false;
+                bool isGpu = hardware.HardwareType == HardwareType.GpuNvidia || hardware.HardwareType == HardwareType.GpuAmd || hardware.HardwareType == HardwareType.GpuIntel;
+                var typeKey2 = hardware.HardwareType == HardwareType.Memory ? "ram" : (hardware.HardwareType == HardwareType.Cpu ? "cpu" : "gpu");
+
+                foreach (var s in hardware.Sensors)
+                {
+                    if (s.SensorType == SensorType.Load)
+                    {
+                        if (hardware.HardwareType == HardwareType.Cpu && s.Name == "CPU Total") { usage = s.Value ?? 0; hasData = true; }
+                        else if (isGpu && s.Name == "GPU Core") { usage = s.Value ?? 0; hasData = true; }
+                        else if (hardware.HardwareType == HardwareType.Memory && s.Name == "Memory") { usage = s.Value ?? 0; hasData = true; }
+                    }
+                    else if (s.SensorType == SensorType.Temperature)
+                    {
+                        if ((hardware.HardwareType == HardwareType.Cpu && (s.Name.Contains("Package") || s.Name.Contains("Core (Max)"))) ||
+                            (isGpu && s.Name == "GPU Core"))
+                        {
+                            temp = s.Value ?? 0;
+                        }
+                    }
+                    else if (s.SensorType == SensorType.Power)
+                    {
+                        // Pick the main power reading for the individual "power" attribute
+                        if ((hardware.HardwareType == HardwareType.Cpu && (s.Name == "CPU Package" || s.Name == "Package")) ||
+                            (isGpu && (s.Name == "GPU Core" || s.Name == "GPU Package")))
+                        {
+                            power = s.Value ?? 0;
+                        }
+                        // Track ALL power sensors for total_power summation
+                        float val = s.Value ?? 0;
+                        if (val > 0)
+                        {
+                            allPowerReadings.Add(($"{typeKey2}/{s.Name}", val));
+                        }
+                    }
+                    else if (s.SensorType == SensorType.Data || s.SensorType == SensorType.SmallData)
+                    {
+                        // SmallData = MB, Data = GB
+                        float valGB = s.Value ?? 0;
+                        if (s.SensorType == SensorType.SmallData) valGB /= 1024.0f; // Convert MB to GB
+
+                        if (s.Name == "Memory Used" || s.Name == "GPU Memory Used" || s.Name == "D3D Dedicated Memory Used") { used = valGB; hasData = true; }
+                        else if (s.Name == "Memory Available" || s.Name == "GPU Memory Free" || s.Name == "D3D Dedicated Memory Free") { free = valGB; hasData = true; }
+                        else if (s.Name == "Memory Total" || s.Name == "GPU Memory Total" || s.Name == "D3D Dedicated Memory Total") { total = valGB; hasData = true; }
+                    }
+                }
+
+                // If free is not reported but total and used are, derive free
+                if (free <= 0 && total > 0 && used > 0)
+                {
+                    free = total - used;
+                }
+                // If total is not reported but both used and free are, derive total
+                else if (total <= 0 && used > 0 && free > 0)
+                {
+                    total = used + free;
+                }
+
+                // For GPU: if we still don't have total/free, try WMI as fallback
+                if (isGpu && used > 0 && free <= 0 && total <= 0)
+                {
+                    try
+                    {
+                        using var searcher = new System.Management.ManagementObjectSearcher("SELECT AdapterRAM FROM Win32_VideoController WHERE Name IS NOT NULL");
+                        foreach (var obj in searcher.Get())
+                        {
+                            var adapterRam = obj["AdapterRAM"];
+                            if (adapterRam != null)
+                            {
+                                var totalBytes = Convert.ToInt64(adapterRam);
+                                if (totalBytes > 0)
+                                {
+                                    total = totalBytes / (1024.0f * 1024.0f * 1024.0f); // bytes -> GB
+                                    free = total - used;
+                                    if (free < 0) free = 0;
+                                    _logger.LogDebug("GPU VRAM total from WMI: {Total:F1} GB", total);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to fetch GPU VRAM total from WMI.");
+                    }
+                }
+
+                if (hasData || temp > 0)
+                {
+                    var typeKey = hardware.HardwareType == HardwareType.Memory ? "ram" : (hardware.HardwareType == HardwareType.Cpu ? "cpu" : "gpu");
+                    var sensorTopic = $"homeassistant/sensor/{uniqueId}_{typeKey}/state";
+                    var sensorAttrTopic = $"homeassistant/sensor/{uniqueId}_{typeKey}/attributes";
+
+                    var attrs = new System.Collections.Generic.Dictionary<string, object>
+                    {
+                        { "usage", Math.Round(usage) }
+                    };
+                    if (temp > 0) attrs.Add("temp", Math.Round(temp));
+                    if (power > 0) attrs.Add("power", Math.Round(power, 1));
+                    
+                    // For RAM/GPU memory, values are now normalized to GB
+                    if (used > 0 || free > 0)
+                    {
+                        if (hardware.HardwareType == HardwareType.Memory)
+                        {
+                            if (used > 0) attrs.Add("used", $"{used.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} GB");
+                            if (free > 0) attrs.Add("free", $"{free.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} GB");
+                            if (total > 0) attrs.Add("total", $"{total.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} GB");
+                        }
+                        else
+                        {
+                            if (used > 0) attrs.Add("vram_used", $"{used.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} GB");
+                            if (free > 0) attrs.Add("vram_free", $"{free.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} GB");
+                            if (total > 0) attrs.Add("vram_total", $"{total.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} GB");
+                            if (total > 0 && used > 0)
+                            {
+                                attrs.Add("vram_usage", Math.Round(used / total * 100));
+                            }
+                            else if (used > 0 && free > 0)
+                            {
+                                attrs.Add("vram_usage", Math.Round(used / (used + free) * 100));
+                            }
+                        }
+                    }
+
+                    // Defer publishing so we can add total_power to CPU after the loop
+                    deferredPublishes.Add((typeKey, sensorTopic, sensorAttrTopic, hwName, attrs));
+                }
+            }
+
+            // Add total_power to CPU attributes (sum of ALL power readings across the system)
+            if (allPowerReadings.Count > 0)
+            {
+                float totalPower = allPowerReadings.Sum(r => r.watts);
+                var cpuEntry = deferredPublishes.FirstOrDefault(p => p.typeKey == "cpu");
+                if (cpuEntry.attrs != null)
+                {
+                    cpuEntry.attrs["total_power"] = Math.Round(totalPower, 1);
+                    // Include breakdown so user can see what contributes
+                    var breakdown = new Dictionary<string, object>();
+                    foreach (var (source, watts) in allPowerReadings)
+                    {
+                        breakdown[source] = Math.Round(watts, 1);
+                    }
+                    cpuEntry.attrs["power_breakdown"] = breakdown;
+                }
+            }
+
+            // Now publish all deferred sensor data
+            foreach (var (typeKey, sensorTopic, sensorAttrTopic, hwName, attrs) in deferredPublishes)
+            {
+                await _mqtt.EnqueueAsync(sensorTopic, hwName, true);
+                await _mqtt.EnqueueAsync(sensorAttrTopic, JsonSerializer.Serialize(attrs), true);
+            }
+
             var users = SystemHelper.GetLoggedInUsers();
             var attributes = new
             {
-                logged_in_users = users,
-                last_updated = DateTime.Now.ToString("O"),
-                cpu_load = _cpuCounter?.NextValue() ?? 0,
-                gpu_load = _gpuCounters.Count > 0 ? _gpuCounters.Max(c => { try { return c.NextValue(); } catch { return 0; } }) : 0,
-                power_profile = PowerHelper.GetActiveScheme()
+                power_profile = PowerHelper.GetActiveScheme(),
+                users = string.Join(", ", users),
+                user_count = users.Count
             };
 
-            await _mqtt.EnqueueAsync(attrTopic, System.Text.Json.JsonSerializer.Serialize(attributes), true);
+            await _mqtt.EnqueueAsync(attrTopic, JsonSerializer.Serialize(attributes), true);
             
             // Also update the power profile state topic
             await _mqtt.EnqueueAsync($"homeassistant/select/{uniqueId}_power_profile/state", attributes.power_profile, true);
+            
+            // Update interval state
+            await _mqtt.EnqueueAsync($"homeassistant/number/{uniqueId}_update_interval/state", _updateIntervalSeconds.ToString(), true);
+            
+            // Update interval state
+            await _mqtt.EnqueueAsync($"homeassistant/number/{uniqueId}_update_interval/state", _updateIntervalSeconds.ToString(), true);
         }
 
         public override async Task StopAsync(CancellationToken cancellationToken)
@@ -314,8 +514,7 @@ namespace MqttAgent.Services
             _updateWatcher?.Dispose();
             _arrivalWatcher?.Dispose();
             _removalWatcher?.Dispose();
-            _cpuCounter?.Dispose();
-            foreach (var c in _gpuCounters) c.Dispose();
+            _computer.Close();
             await base.StopAsync(cancellationToken);
         }
     }

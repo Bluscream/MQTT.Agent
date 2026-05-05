@@ -43,10 +43,10 @@ namespace MqttAgent.Services
             {
                 name = "Status",
                 unique_id = $"{deviceIdentifier}_status",
-                object_id = $"{entityId}_status",
-                state_topic = $"homeassistant/select/{uniqueId}/state",
-                command_topic = $"homeassistant/select/{uniqueId}/set",
-                json_attributes_topic = $"homeassistant/select/{uniqueId}/attributes",
+                object_id = $"{deviceIdentifier}_status",
+                state_topic = $"homeassistant/select/{deviceIdentifier}/state",
+                command_topic = $"homeassistant/select/{deviceIdentifier}/set",
+                json_attributes_topic = $"homeassistant/select/{deviceIdentifier}/attributes",
                 options = new[] { 
                     "Off", "On", "Locked", "Unlocked", "Logged out", "Updating", "Update Finished", "Safe Mode", "Shutting Down", "Maintenance", "Idle", "Booting", "Powered",
                     "Console Connected", "Console Disconnected", "Remote Connected", "Remote Disconnected",
@@ -104,7 +104,13 @@ namespace MqttAgent.Services
                 icon = "mdi:lightning-bolt"
             };
 
-            // 6. Buttons for Actions
+            // 6. Hardware Sensors (Consolidated)
+            var cpuConfig = new { name = "CPU", unique_id = $"{deviceIdentifier}_cpu", object_id = $"{deviceIdentifier}_cpu", state_topic = $"homeassistant/sensor/{deviceIdentifier}_cpu/state", json_attributes_topic = $"homeassistant/sensor/{deviceIdentifier}_cpu/attributes", device = deviceInfo, icon = "mdi:cpu-64-bit" };
+            var gpuConfig = new { name = "GPU", unique_id = $"{deviceIdentifier}_gpu", object_id = $"{deviceIdentifier}_gpu", state_topic = $"homeassistant/sensor/{deviceIdentifier}_gpu/state", json_attributes_topic = $"homeassistant/sensor/{deviceIdentifier}_gpu/attributes", device = deviceInfo, icon = "mdi:expansion-card" };
+            var ramConfig = new { name = "RAM", unique_id = $"{deviceIdentifier}_ram", object_id = $"{deviceIdentifier}_ram", state_topic = $"homeassistant/sensor/{deviceIdentifier}_ram/state", json_attributes_topic = $"homeassistant/sensor/{deviceIdentifier}_ram/attributes", device = deviceInfo, icon = "mdi:memory" };
+            var updateIntervalConfig = new { name = "Update Interval", unique_id = $"{deviceIdentifier}_update_interval", object_id = $"{deviceIdentifier}_update_interval", state_topic = $"homeassistant/number/{deviceIdentifier}_update_interval/state", command_topic = $"homeassistant/number/{deviceIdentifier}_update_interval/set", min = 1, max = 3600, step = 1, unit_of_measurement = "s", device = deviceInfo, icon = "mdi:timer-cog" };
+
+            // 7. Buttons for Actions
             var actionTopic = $"homeassistant/action/{safeMachineName}/command";
             var shutdownBtn = new { name = "Shutdown", unique_id = $"{deviceIdentifier}_btn_shutdown", object_id = $"{entityId}_shutdown", command_topic = actionTopic, payload_press = "{\"action\": \"shutdown\"}", device = deviceInfo, device_class = "restart", icon = "mdi:power" };
             var rebootBtn = new { name = "Reboot", unique_id = $"{deviceIdentifier}_btn_reboot", object_id = $"{entityId}_reboot", command_topic = actionTopic, payload_press = "{\"action\": \"reboot\"}", device = deviceInfo, device_class = "restart", icon = "mdi:restart" };
@@ -118,6 +124,11 @@ namespace MqttAgent.Services
             await _mqtt.EnqueueAsync($"homeassistant/switch/{safeMachineName}_block_shutdown/config", JsonSerializer.Serialize(shutdownConfig), true);
             await _mqtt.EnqueueAsync($"homeassistant/notify/{safeMachineName}/config", JsonSerializer.Serialize(notifyConfig), true);
             await _mqtt.EnqueueAsync($"homeassistant/select/{uniqueId}_power_profile/config", JsonSerializer.Serialize(powerProfileConfig), true);
+
+            await _mqtt.EnqueueAsync($"homeassistant/sensor/{uniqueId}_cpu/config", JsonSerializer.Serialize(cpuConfig), true);
+            await _mqtt.EnqueueAsync($"homeassistant/sensor/{uniqueId}_gpu/config", JsonSerializer.Serialize(gpuConfig), true);
+            await _mqtt.EnqueueAsync($"homeassistant/sensor/{uniqueId}_ram/config", JsonSerializer.Serialize(ramConfig), true);
+            await _mqtt.EnqueueAsync($"homeassistant/number/{uniqueId}_update_interval/config", JsonSerializer.Serialize(updateIntervalConfig), true);
             
             await _mqtt.EnqueueAsync($"homeassistant/button/{deviceIdentifier}/shutdown/config", JsonSerializer.Serialize(shutdownBtn), true);
             await _mqtt.EnqueueAsync($"homeassistant/button/{deviceIdentifier}/reboot/config", JsonSerializer.Serialize(rebootBtn), true);
