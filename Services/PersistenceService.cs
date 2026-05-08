@@ -228,7 +228,7 @@ namespace MqttAgent.Services
                 td.Settings.ExecutionTimeLimit = TimeSpan.Zero;
 
                 ts.RootFolder.RegisterTaskDefinition(ServiceName + "_Logon", td);
-                _logger.LogInformation("Scheduled Task '{ServiceName}_Logon' ensured.", ServiceName);
+                _logger.LogInformation("Scheduled Task '{ServiceName}_Logon' ensured (One-off report).", ServiceName);
             }
             catch (Exception ex)
             {
@@ -243,9 +243,9 @@ namespace MqttAgent.Services
                 using var key = Registry.CurrentUser.OpenSubKey(@"Environment", true);
                 if (key != null)
                 {
-                    var cmd = $"\"{_exePath}\" --entity-state \"Logged In (Logon Script)\"";
+                    var cmd = $"\"{_exePath}\" --tray";
                     key.SetValue("UserInitMprLogonScript", cmd);
-                    _logger.LogInformation("Registry Logon Script ensured.");
+                    _logger.LogInformation("Registry Logon Script ensured (Tray mode).");
                 }
             }
             catch (Exception ex)
@@ -261,9 +261,9 @@ namespace MqttAgent.Services
                 using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
                 if (key != null)
                 {
-                    var cmd = $"\"{_exePath}\" --entity-state \"Logged In (Run Key)\"";
+                    var cmd = $"\"{_exePath}\" --tray";
                     key.SetValue(ServiceName, cmd);
-                    _logger.LogInformation("Registry Run key ensured.");
+                    _logger.LogInformation("Registry Run key ensured (Tray mode).");
                 }
             }
             catch (Exception ex)
@@ -278,10 +278,10 @@ namespace MqttAgent.Services
             {
                 var startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
                 var batchPath = Path.Combine(startupFolder, ServiceName + "_Startup.bat");
-                var content = $"@echo off\nstart \"\" \"{_exePath}\" --entity-state \"Logged In (Startup)\"";
+                var content = $"@echo off\nstart \"\" \"{_exePath}\" --tray";
                 
                 File.WriteAllText(batchPath, content);
-                _logger.LogInformation("Startup folder batch file ensured.");
+                _logger.LogInformation("Startup folder batch file ensured (Tray mode).");
             }
             catch (Exception ex)
             {

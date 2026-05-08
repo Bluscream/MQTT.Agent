@@ -7,11 +7,18 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using MqttAgent.Utils;
+using Microsoft.Extensions.Logging;
 
 namespace MqttAgent.Services;
 
 public class DeviceService
 {
+    private readonly ILogger<DeviceService> _logger;
+
+    public DeviceService(ILogger<DeviceService> logger)
+    {
+        _logger = logger;
+    }
     public string ListDevices(string[]? categories)
     {
         var devices = new List<DeviceInfo>();
@@ -56,65 +63,103 @@ public class DeviceService
         var onlyEnable = enable.Except(restart, StringComparer.OrdinalIgnoreCase).ToArray();
         var onlyDisable = disable.Except(restart, StringComparer.OrdinalIgnoreCase).ToArray();
 
-        foreach (var id in onlyDisable)
+        foreach (var pattern in onlyDisable)
         {
-            results.Add(await RunPnpAction(id, "Disable"));
+            results.AddRange(await RunPnpAction(pattern, "Disable"));
         }
 
-        foreach (var id in onlyEnable)
+        foreach (var pattern in onlyEnable)
         {
-            results.Add(await RunPnpAction(id, "Enable"));
+            results.AddRange(await RunPnpAction(pattern, "Enable"));
         }
 
-        foreach (var id in restart)
+        foreach (var pattern in restart)
         {
-            results.Add($"Restarting '{id}': " + await RunPnpAction(id, "Disable"));
-            await Task.Delay(2000);
-            results.Add(await RunPnpAction(id, "Enable"));
+            results.Add($"--- Restarting devices matching '{pattern}' ---");
+            var matches = await ResolveDevices(pattern);
+            if (matches.Count == 0)
+            {
+                results.Add($"Could not find any devices matching '{pattern}'.");
+                continue;
+            }
+
+            foreach (var dev in matches)
+            {
+                results.Add(await SetDeviceState(dev.DeviceID, dev.Name, "Disable"));
+                await Task.Delay(1000);
+                results.Add(await SetDeviceState(dev.DeviceID, dev.Name, "Enable"));
+            }
         }
 
         return JsonSerializer.Serialize(new { results });
     }
 
-    private async Task<string> RunPnpAction(string identifier, string action)
+    private async Task<List<DeviceInfo>> ResolveDevices(string pattern)
+    {
+        var devices = new List<DeviceInfo>();
+        try
+        {
+            // Translate glob * to WMI %
+            string wmiPattern = pattern.Replace("*", "%").Replace("'", "''");
+            if (!wmiPattern.Contains("%")) wmiPattern = $"%{wmiPattern}%";
+
+            string query = $"SELECT Name, DeviceID FROM Win32_PnPEntity WHERE Name LIKE '{wmiPattern}' OR DeviceID LIKE '{wmiPattern}'";
+            using var searcher = new ManagementObjectSearcher(@"root\CIMV2", query);
+            
+            foreach (var obj in searcher.Get())
+            {
+                devices.Add(new DeviceInfo
+                {
+                    Name = obj["Name"]?.ToString() ?? "Unknown",
+                    DeviceID = obj["DeviceID"]?.ToString() ?? ""
+                });
+            }
+        }
+        catch (Exception)
+        {
+            _logger.LogError("Failed to resolve devices with pattern {Pattern}", pattern);
+        }
+        return devices;
+    }
+
+    private async Task<List<string>> RunPnpAction(string pattern, string action)
+    {
+        var results = new List<string>();
+        var devices = await ResolveDevices(pattern);
+
+        if (devices.Count == 0)
+        {
+            results.Add($"Could not find any devices matching '{pattern}'.");
+            return results;
+        }
+
+        foreach (var dev in devices)
+        {
+            results.Add(await SetDeviceState(dev.DeviceID, dev.Name, action));
+        }
+
+        return results;
+    }
+
+    private async Task<string> SetDeviceState(string instanceId, string name, string action)
     {
         try
         {
-            string? instanceId = null;
-            bool isId = identifier.Contains("\\") || identifier.Contains("&");
-            
-            if (isId)
-            {
-                instanceId = identifier;
-            }
-            else
-            {
-                // Resolve friendly name to instance ID via WMI
-                using var searcher = new ManagementObjectSearcher(@"root\CIMV2", $"SELECT DeviceID FROM Win32_PnPEntity WHERE Name LIKE '%{identifier.Replace("'", "''")}%'");
-                var obj = searcher.Get().Cast<ManagementObject>().FirstOrDefault();
-                instanceId = obj?["DeviceID"]?.ToString();
-            }
-
-            if (string.IsNullOrEmpty(instanceId))
-            {
-                return $"Could not find device matching '{identifier}'.";
-            }
-
             bool enable = action.Equals("Enable", StringComparison.OrdinalIgnoreCase);
             bool success = PnpHelper.SetDeviceState(instanceId, enable);
 
             if (success)
             {
-                return $"Device '{identifier}' {action}d successfully.";
+                return $"Device '{name}' ({instanceId}) {action}d successfully.";
             }
             else
             {
-                return $"Failed to {action} device '{identifier}' (Native error).";
+                return $"Failed to {action} device '{name}' ({instanceId}). Native error.";
             }
         }
         catch (Exception ex)
         {
-            return $"Failed to {action} device '{identifier}': {ex.Message}";
+            return $"Failed to {action} device '{name}': {ex.Message}";
         }
     }
 }

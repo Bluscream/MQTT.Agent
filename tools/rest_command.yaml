@@ -1,0 +1,92 @@
+pc_notify_toast:
+  url: "http://192.168.2.99/api/notify?message={{message}}&title={{title}}&image=https://github.com/Bluscream/homeassistant-assets/blob/master/logo/home-assistant-logomark-color-on-light.png?raw=true"
+  method: POST
+  headers:
+    accept: "application/json, text/html, text/plain"
+    user-agent: "Mozilla/5.0 {{ useragent }}"
+  content_type: "application/json; charset=utf-8"
+  verify_ssl: false
+  timeout: 15
+  payload: '{"message": "{{ message }}","title": "{{ title }}","image": "https://github.com/Bluscream/homeassistant-assets/blob/master/logo/home-assistant-logomark-color-on-light.png?raw=true"}'
+
+mqttagent_screenshot:
+  url: "http://192.168.2.50:23482/api/Screenshot"
+  method: GET
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  # Optional: ?display={{ display }}&quality={{ quality }}&format={{ format }} can be added to URL if needed for GET
+
+mqttagent_toggle_block:
+  url: "http://192.168.2.50:23482/api/system/toggle-block"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: '{"enabled": {{ enabled | lower }}}'
+
+mqttagent_toggle_force:
+  url: "http://192.168.2.50:23482/api/system/toggle-force"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: '{"enabled": {{ enabled | lower }}}'
+
+mqttagent_execute:
+  url: "http://192.168.2.50:23482/api/system/execute"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: '{"action": {{ action_json | to_json }}}'
+
+mqttagent_lock:
+  url: "http://192.168.2.50:23482/api/system/execute"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: '{"action": "{\"action\": \"lock\"}"}'
+
+mqttagent_shutdown:
+  url: "http://192.168.2.50:23482/api/system/execute"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: '{"action": "{\"action\": \"shutdown\"}"}'
+
+mqttagent_start_process:
+  url: "http://192.168.2.50:23482/api/system/execute"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: >
+    {
+      "action": {{ { "action": "start_process", "executable": exe, "arguments": args | default(""), "elevated": elevated | default(false) } | to_json | to_json }}
+    }
+
+mqttagent_device_enable:
+  url: "http://192.168.2.50:23482/api/device/enable"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: '{"pattern": "{{ pattern }}"}'
+
+mqttagent_device_disable:
+  url: "http://192.168.2.50:23482/api/device/disable"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: '{"pattern": "{{ pattern }}"}'
+
+mqttagent_device_restart:
+  url: "http://192.168.2.50:23482/api/device/restart"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: '{"pattern": "{{ pattern }}"}'

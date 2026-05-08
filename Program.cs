@@ -14,13 +14,14 @@ using Microsoft.Extensions.Logging;
 using MqttAgent.Services;
 using MqttAgent.Utils;
 using Serilog;
+using System.Text.Json;
 
 namespace MqttAgent;
 
 public static class Program
 {
     [STAThread]
-    public static void Main(string[] args)
+    public static async Task Main(string[] args)
     {
         if (args.Contains("--screenshot-helper") || args.Contains("--messagebox") || args.Contains("--banner"))
         {
@@ -157,11 +158,38 @@ public static class Program
             }
 
             // If we are JUST installing/uninstalling without starting, exit
-            if (!isTray && !isService && !args.Contains("--run"))
+            if (!isTray && !isService && !args.Contains("--run") && !args.Contains("--entity-state"))
             {
                 Log.Information("Setup task complete. Exiting.");
                 return;
             }
+        }
+
+        // Handle one-off state reporting
+        var entityState = args.FirstOrDefault(a => a.StartsWith("--entity-state"))?.Split(' ', 2).LastOrDefault();
+        if (string.IsNullOrEmpty(entityState)) entityState = args.SkipWhile(a => a != "--entity-state").Skip(1).FirstOrDefault();
+
+        if (!string.IsNullOrEmpty(entityState))
+        {
+            var attributes = args.SkipWhile(a => a != "--entity-attributes").Skip(1).FirstOrDefault();
+            
+            using var appForState = builder.Build();
+            var mqtt = appForState.Services.GetRequiredService<IMqttManager>();
+            await mqtt.StartAsync(CancellationToken.None);
+            
+            var machineName = Environment.MachineName.ToLowerInvariant();
+            var topic = $"homeassistant/select/{machineName}/state";
+            await mqtt.EnqueueAsync(topic, entityState, true);
+
+            if (!string.IsNullOrEmpty(attributes))
+            {
+                var attrTopic = $"homeassistant/select/{machineName}/attributes";
+                await mqtt.EnqueueAsync(attrTopic, attributes, true);
+            }
+
+            await mqtt.StopAsync(CancellationToken.None);
+            Log.Information("Reported state '{State}' to MQTT. Exiting.", entityState);
+            return;
         }
         
         builder.Services.AddHostedService(p => p.GetRequiredService<SystemMonitorService>());
