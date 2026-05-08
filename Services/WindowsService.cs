@@ -24,10 +24,12 @@ public class WindowInfo
 public class WindowsService
 {
     private readonly ProcessService _processService;
+    private readonly IServiceProvider _services;
 
-    public WindowsService(ProcessService processService)
+    public WindowsService(ProcessService processService, IServiceProvider services)
     {
         _processService = processService;
+        _services = services;
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -140,6 +142,12 @@ public class WindowsService
 
     public string Logout(bool allUsers = false, string? message = null, int timeout = 0, bool force = false)
     {
+        var blocker = (ShutdownBlockerService?)_services.GetService(typeof(ShutdownBlockerService));
+        if (blocker != null && blocker.IsBlockingEnabled)
+        {
+            throw new Exception("Logout blocked: 'Block Shutdown' is currently enabled in MQTT Agent.");
+        }
+
         try
         {
             if (allUsers)
@@ -173,6 +181,13 @@ public class WindowsService
 
     public string Shutdown(bool reboot = false, bool force = true, int timeout = 0, string? message = null)
     {
+        var blocker = (ShutdownBlockerService?)_services.GetService(typeof(ShutdownBlockerService));
+        if (blocker != null && blocker.IsBlockingEnabled)
+        {
+            string action = reboot ? "Reboot" : "Shutdown";
+            throw new Exception($"{action} blocked: 'Block Shutdown' is currently enabled in MQTT Agent.");
+        }
+
         try
         {
             if (InitiateSystemShutdownEx(null, message, (uint)timeout, force, reboot, 0))
