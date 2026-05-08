@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using NAudio.CoreAudioApi;
+using System.Linq;
+using MqttAgent.Utils;
 
 namespace MqttAgent.Services;
 
@@ -111,26 +113,31 @@ public class AudioService
         try
         {
             var action = enable ? "Enable" : "Disable";
-            var script = $"$dev = Get-PnpDevice | Where-Object {{ $_.FriendlyName -like '*{identifier}*' -or $_.InstanceId -like '*{identifier}*' }} | Select-Object -First 1; if ($dev) {{ {action}-PnpDevice -InstanceId $dev.InstanceId -Confirm:$false; \"OK\" }} else {{ \"NotFound\" }}";
-            
-            var process = new System.Diagnostics.Process
-            {
-                StartInfo = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"{script}\"",
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-            process.Start();
-            var output = process.StandardOutput.ReadToEnd().Trim();
-            process.WaitForExit();
+            string? instanceId = null;
 
-            if (output == "OK") return $"Audio device '{identifier}' {action}d successfully.";
-            if (output == "NotFound") return $"Could not find PnP device matching '{identifier}'.";
-            return $"Unexpected output: {output}";
+            // Search for the PnP device matching the friendly name or ID
+            // We use WMI to find the device because NAudio IDs don't always match PnP Instance IDs directly
+            using (var searcher = new System.Management.ManagementObjectSearcher(@"root\CIMV2", $"SELECT DeviceID FROM Win32_PnPEntity WHERE Name LIKE '%{identifier.Replace("'", "''")}%' OR DeviceID LIKE '%{identifier.Replace("'", "''")}%'"))
+            {
+                var obj = searcher.Get().Cast<System.Management.ManagementObject>().FirstOrDefault();
+                instanceId = obj?["DeviceID"]?.ToString();
+            }
+
+            if (string.IsNullOrEmpty(instanceId))
+            {
+                return $"Could not find audio device matching '{identifier}'.";
+            }
+
+            bool success = PnpHelper.SetDeviceState(instanceId, enable);
+
+            if (success)
+            {
+                return $"Audio device '{identifier}' {action}d successfully.";
+            }
+            else
+            {
+                return $"Failed to {action} audio device '{identifier}' (Native error).";
+            }
         }
         catch (Exception ex)
         {

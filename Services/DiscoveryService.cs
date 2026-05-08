@@ -48,10 +48,7 @@ namespace MqttAgent.Services
                 command_topic = $"homeassistant/select/{deviceIdentifier}/set",
                 json_attributes_topic = $"homeassistant/select/{deviceIdentifier}/attributes",
                 options = new[] { 
-                    "Off", "On", "Locked", "Unlocked", "Logged out", "Updating", "Update Finished", "Safe Mode", "Shutting Down", "Maintenance", "Idle", "Booting", "Powered",
-                    "Console Connected", "Console Disconnected", "Remote Connected", "Remote Disconnected",
-                    "Idle (Task Scheduler)", "Logged In (Logon Trigger)", "Logged In (Scheduled Task)", 
-                    "Logged In (Logon Script)", "Logged In (Startup)", "Logged In (Run Key)" 
+                    "On", "Locked", "Logged out", "Updating", "Safe Mode", "Idle", "Shutting Down", "Logging In", "Logging Out"
                 },
                 device = deviceInfo
             };
@@ -79,6 +76,18 @@ namespace MqttAgent.Services
                 command_topic = $"homeassistant/switch/{safeMachineName}_block_shutdown/set",
                 state_topic = $"homeassistant/switch/{safeMachineName}_block_shutdown/state",
                 device = deviceInfo
+            };
+
+            // 3b. Force Action Switch
+            var forceActionConfig = new
+            {
+                name = "Force Action",
+                unique_id = $"{deviceIdentifier}_force_action",
+                object_id = $"{entityId}_force_action",
+                command_topic = $"homeassistant/switch/{safeMachineName}_force_action/set",
+                state_topic = $"homeassistant/switch/{safeMachineName}_force_action/state",
+                device = deviceInfo,
+                icon = "mdi:lightning-bolt"
             };
 
             // 4. Notifications (Notify platform)
@@ -122,6 +131,7 @@ namespace MqttAgent.Services
             await _mqtt.EnqueueAsync($"homeassistant/select/{uniqueId}/config", JsonSerializer.Serialize(statusConfig), true);
             await _mqtt.EnqueueAsync($"homeassistant/sensor/{uniqueId}_event/config", JsonSerializer.Serialize(eventConfig), true);
             await _mqtt.EnqueueAsync($"homeassistant/switch/{safeMachineName}_block_shutdown/config", JsonSerializer.Serialize(shutdownConfig), true);
+            await _mqtt.EnqueueAsync($"homeassistant/switch/{safeMachineName}_force_action/config", JsonSerializer.Serialize(forceActionConfig), true);
             await _mqtt.EnqueueAsync($"homeassistant/notify/{safeMachineName}/config", JsonSerializer.Serialize(notifyConfig), true);
             await _mqtt.EnqueueAsync($"homeassistant/select/{uniqueId}_power_profile/config", JsonSerializer.Serialize(powerProfileConfig), true);
 

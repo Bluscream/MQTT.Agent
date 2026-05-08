@@ -10,11 +10,13 @@ namespace MqttAgent.Controllers;
 public class SystemController : ControllerBase
 {
     private readonly ShutdownBlockerService _blocker;
+    private readonly ForceActionService _forceActionService;
     private readonly IMqttManager _mqtt;
 
-    public SystemController(ShutdownBlockerService blocker, IMqttManager mqtt)
+    public SystemController(ShutdownBlockerService blocker, ForceActionService forceActionService, IMqttManager mqtt)
     {
         _blocker = blocker;
+        _forceActionService = forceActionService;
         _mqtt = mqtt;
     }
 
@@ -29,6 +31,23 @@ public class SystemController : ControllerBase
     {
         var machineName = Environment.MachineName.ToLowerInvariant().Replace(" ", "_").Replace("-", "_");
         var topic = $"homeassistant/switch/{machineName}_block_shutdown/set";
+        var payload = enabled ? "ON" : "OFF";
+        await _mqtt.EnqueueAsync(topic, payload, true);
+        
+        return Ok(new { enabled });
+    }
+
+    [HttpGet("force-status")]
+    public IActionResult GetForceStatus()
+    {
+        return Ok(new { enabled = _forceActionService.IsForceEnabled });
+    }
+
+    [HttpPost("toggle-force")]
+    public async Task<IActionResult> ToggleForce([FromQuery] bool enabled)
+    {
+        var machineName = Environment.MachineName.ToLowerInvariant().Replace(" ", "_").Replace("-", "_");
+        var topic = $"homeassistant/switch/{machineName}_force_action/set";
         var payload = enabled ? "ON" : "OFF";
         await _mqtt.EnqueueAsync(topic, payload, true);
         

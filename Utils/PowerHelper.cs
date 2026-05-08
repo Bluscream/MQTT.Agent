@@ -1,105 +1,194 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Text.RegularExpressions;
+using System.Runtime.InteropServices;
+using System.Text;
 
 namespace MqttAgent.Utils
 {
+    /// <summary>
+    /// Manages Windows power schemes via native Win32 PowrProf.dll P/Invoke calls
+    /// instead of shelling out to powercfg.exe.
+    /// </summary>
     public static class PowerHelper
     {
+        // ── P/Invoke declarations ──────────────────────────────────────────
+
+        [DllImport("powrprof.dll", SetLastError = true)]
+        private static extern uint PowerEnumerate(
+            IntPtr RootPowerKey,
+            IntPtr SchemeGuid,
+            IntPtr SubGroupOfPowerSettingsGuid,
+            uint AccessFlags,
+            uint Index,
+            ref Guid Buffer,
+            ref uint BufferSize);
+
+        [DllImport("powrprof.dll", SetLastError = true)]
+        private static extern uint PowerGetActiveScheme(
+            IntPtr UserRootPowerKey,
+            out IntPtr ActivePolicyGuid);
+
+        [DllImport("powrprof.dll", SetLastError = true)]
+        private static extern uint PowerSetActiveScheme(
+            IntPtr UserRootPowerKey,
+            ref Guid SchemeGuid);
+
+        [DllImport("powrprof.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern uint PowerReadFriendlyName(
+            IntPtr RootPowerKey,
+            ref Guid SchemeGuid,
+            IntPtr SubGroupOfPowerSettingsGuid,
+            IntPtr PowerSettingGuid,
+            StringBuilder Buffer,
+            ref uint BufferSize);
+
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr LocalFree(IntPtr hMem);
+
+        private const uint ACCESS_SCHEME = 16;
+        private const uint ERROR_SUCCESS = 0;
+        private const uint ERROR_NO_MORE_ITEMS = 259;
+
+        // ── Public API ─────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Enumerates all power schemes using the native PowrProf API.
+        /// </summary>
         public static List<(string Name, string Guid)> GetPowerSchemes()
         {
             var schemes = new List<(string Name, string Guid)>();
             try
             {
-                var process = new Process
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = "powercfg",
-                        Arguments = "/list",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        CreateNoWindow = true
-                    }
-                };
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd();
-                process.WaitForExit();
+                uint index = 0;
+                var schemeGuid = Guid.Empty;
+                uint bufferSize = (uint)Marshal.SizeOf(typeof(Guid));
 
-                var regex = new Regex(@"GUID: ([\w-]+)\s+\((.+)\)");
-                var matches = regex.Matches(output);
-
-                foreach (Match match in matches)
+                while (true)
                 {
-                    var guid = match.Groups[1].Value;
-                    var name = match.Groups[2].Value.Trim();
-                    if (name.EndsWith("*")) name = name.Substring(0, name.Length - 1).Trim();
-                    schemes.Add((name, guid));
+                    schemeGuid = Guid.Empty;
+                    bufferSize = (uint)Marshal.SizeOf(typeof(Guid));
+                    uint result = PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, ACCESS_SCHEME, index, ref schemeGuid, ref bufferSize);
+
+                    if (result == ERROR_NO_MORE_ITEMS) break;
+                    if (result != ERROR_SUCCESS) break;
+
+                    string name = GetSchemeFriendlyName(schemeGuid);
+                    schemes.Add((name, schemeGuid.ToString()));
+                    index++;
                 }
             }
             catch { }
             return schemes;
         }
 
+        /// <summary>
+        /// Returns the friendly name of the currently active power scheme.
+        /// </summary>
         public static string GetActiveScheme()
         {
             try
             {
-                var process = new Process
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = "powercfg",
-                        Arguments = "/getactivescheme",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        CreateNoWindow = true
-                    }
-                };
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd();
-                process.WaitForExit();
+                uint result = PowerGetActiveScheme(IntPtr.Zero, out IntPtr activeGuidPtr);
+                if (result != ERROR_SUCCESS) return "Unknown";
 
-                var regex = new Regex(@"GUID: ([\w-]+)\s+\((.+)\)");
-                var match = regex.Match(output);
-                if (match.Success)
+                try
                 {
-                    return match.Groups[2].Value.Trim();
+                    var activeGuid = Marshal.PtrToStructure<Guid>(activeGuidPtr);
+                    return GetSchemeFriendlyName(activeGuid);
+                }
+                finally
+                {
+                    LocalFree(activeGuidPtr);
                 }
             }
             catch { }
             return "Unknown";
         }
 
+        /// <summary>
+        /// Returns the GUID of the currently active power scheme.
+        /// </summary>
+        public static Guid? GetActiveSchemeGuid()
+        {
+            try
+            {
+                uint result = PowerGetActiveScheme(IntPtr.Zero, out IntPtr activeGuidPtr);
+                if (result != ERROR_SUCCESS) return null;
+
+                try
+                {
+                    return Marshal.PtrToStructure<Guid>(activeGuidPtr);
+                }
+                finally
+                {
+                    LocalFree(activeGuidPtr);
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>
+        /// Sets the active power scheme by friendly name using the native API.
+        /// </summary>
         public static bool SetActiveScheme(string schemeName)
         {
             var schemes = GetPowerSchemes();
             var target = schemes.FirstOrDefault(s => s.Name.Equals(schemeName, StringComparison.OrdinalIgnoreCase));
-            
+
             if (string.IsNullOrEmpty(target.Guid)) return false;
 
             try
             {
-                var process = new Process
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = "powercfg",
-                        Arguments = $"/setactive {target.Guid}",
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
-                };
-                process.Start();
-                process.WaitForExit();
-                return process.ExitCode == 0;
+                var guid = Guid.Parse(target.Guid);
+                uint result = PowerSetActiveScheme(IntPtr.Zero, ref guid);
+                return result == ERROR_SUCCESS;
             }
             catch
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Sets the active power scheme by GUID using the native API.
+        /// </summary>
+        public static bool SetActiveScheme(Guid schemeGuid)
+        {
+            try
+            {
+                uint result = PowerSetActiveScheme(IntPtr.Zero, ref schemeGuid);
+                return result == ERROR_SUCCESS;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // ── Private helpers ────────────────────────────────────────────────
+
+        private static string GetSchemeFriendlyName(Guid schemeGuid)
+        {
+            try
+            {
+                uint nameSize = 0;
+                // First call to get required buffer size
+                PowerReadFriendlyName(IntPtr.Zero, ref schemeGuid, IntPtr.Zero, IntPtr.Zero, null!, ref nameSize);
+
+                if (nameSize == 0) return schemeGuid.ToString();
+
+                var nameBuffer = new StringBuilder((int)nameSize / 2);
+                uint result = PowerReadFriendlyName(IntPtr.Zero, ref schemeGuid, IntPtr.Zero, IntPtr.Zero, nameBuffer, ref nameSize);
+
+                if (result == ERROR_SUCCESS)
+                {
+                    return nameBuffer.ToString();
+                }
+            }
+            catch { }
+            return schemeGuid.ToString();
         }
     }
 }

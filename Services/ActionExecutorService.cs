@@ -15,6 +15,7 @@ public class ActionExecutorService : IHostedService
 {
     private readonly ProcessService _processService;
     private readonly WindowsService _windowsService;
+    private readonly ForceActionService _forceActionService;
     private readonly LogonRegistryService _logonRegistryService;
     private readonly DeviceService _deviceService;
     private readonly IMqttManager _mqttManager;
@@ -24,6 +25,7 @@ public class ActionExecutorService : IHostedService
     public ActionExecutorService(
         ProcessService processService,
         WindowsService windowsService,
+        ForceActionService forceActionService,
         LogonRegistryService logonRegistryService,
         DeviceService deviceService,
         IMqttManager mqttManager,
@@ -31,6 +33,7 @@ public class ActionExecutorService : IHostedService
     {
         _processService = processService;
         _windowsService = windowsService;
+        _forceActionService = forceActionService;
         _logonRegistryService = logonRegistryService;
         _deviceService = deviceService;
         _mqttManager = mqttManager;
@@ -71,11 +74,11 @@ public class ActionExecutorService : IHostedService
                     break;
 
                 case "shutdown":
-                    _windowsService.Shutdown(false, false, 0, null);
+                    _windowsService.Shutdown(false, _forceActionService.IsForceEnabled, 0, null);
                     break;
 
                 case "reboot":
-                    _windowsService.Shutdown(true, false, 0, null);
+                    _windowsService.Shutdown(true, _forceActionService.IsForceEnabled, 0, null);
                     break;
 
                 case "lock":
@@ -83,7 +86,7 @@ public class ActionExecutorService : IHostedService
                     break;
 
                 case "logoff":
-                    _windowsService.Logout(false, null, 0);
+                    _windowsService.Logout(false, null, 0, _forceActionService.IsForceEnabled);
                     break;
 
                 case "login":

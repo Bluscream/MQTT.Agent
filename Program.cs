@@ -114,10 +114,12 @@ public static class Program
         // Add Core Services
         builder.Services.AddSingleton<IDiscoveryService, DiscoveryService>();
         builder.Services.AddSingleton<IMqttManager, MqttManager>();
+        builder.Services.AddSingleton<IPersistenceService, PersistenceService>();
         
         // Selectively enable background tasks based on mode
         builder.Services.AddSingleton<SystemMonitorService>();
         builder.Services.AddSingleton<ShutdownBlockerService>();
+        builder.Services.AddSingleton<ForceActionService>();
         builder.Services.AddSingleton<NotificationReceiverService>();
         builder.Services.AddSingleton<ActionExecutorService>();
 
@@ -125,10 +127,47 @@ public static class Program
         {
             builder.Host.UseWindowsService();
         }
+
+        // Check for setup flags
+        bool install = args.Contains("--install") || args.Contains("/install");
+        bool uninstall = args.Contains("--uninstall") || args.Contains("/uninstall");
+        bool moreStates = args.Contains("--more-states") || args.Contains("/more-states");
+
+        if (install || uninstall || moreStates)
+        {
+            // Create a temporary logger for setup tasks
+            using var loggerFactory = LoggerFactory.Create(builder => builder.AddSerilog());
+            var setupLogger = loggerFactory.CreateLogger<PersistenceService>();
+            var persistence = new PersistenceService(setupLogger);
+            
+            if (uninstall)
+            {
+                persistence.Uninstall();
+                if (!install) return; // Exit if only uninstalling
+            }
+            
+            if (install)
+            {
+                persistence.EnsureServiceSafeBoot();
+            }
+            
+            if (moreStates)
+            {
+                persistence.EnsureMoreStatesTriggers();
+            }
+
+            // If we are JUST installing/uninstalling without starting, exit
+            if (!isTray && !isService && !args.Contains("--run"))
+            {
+                Log.Information("Setup task complete. Exiting.");
+                return;
+            }
+        }
         
         builder.Services.AddHostedService(p => p.GetRequiredService<SystemMonitorService>());
         builder.Services.AddHostedService(p => p.GetRequiredService<NotificationReceiverService>());
         builder.Services.AddHostedService(p => p.GetRequiredService<ActionExecutorService>());
+        builder.Services.AddHostedService(p => p.GetRequiredService<ForceActionService>());
         
         // Always run MQTT if we aren't JUST a helper
         builder.Services.AddHostedService(p => (MqttManager)p.GetRequiredService<IMqttManager>());

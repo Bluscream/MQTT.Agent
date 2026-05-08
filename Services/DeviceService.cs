@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using MqttAgent.Utils;
 
 namespace MqttAgent.Services;
 
@@ -79,31 +80,37 @@ public class DeviceService
     {
         try
         {
+            string? instanceId = null;
             bool isId = identifier.Contains("\\") || identifier.Contains("&");
-            string selector = isId ? $"-InstanceId '{identifier}'" : $"-FriendlyName '*{identifier}*'";
-            string script = $"$dev = Get-PnpDevice {selector} | Select-Object -First 1; if ($dev) {{ {action}-PnpDevice -InstanceId $dev.InstanceId -Confirm:$false; \"OK\" }} else {{ \"NotFound\" }}";
-
-            using var process = new System.Diagnostics.Process
+            
+            if (isId)
             {
-                StartInfo = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"{script}\"",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-            process.Start();
-            var output = await process.StandardOutput.ReadToEndAsync();
-            var error = await process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
+                instanceId = identifier;
+            }
+            else
+            {
+                // Resolve friendly name to instance ID via WMI
+                using var searcher = new ManagementObjectSearcher(@"root\CIMV2", $"SELECT DeviceID FROM Win32_PnPEntity WHERE Name LIKE '%{identifier.Replace("'", "''")}%'");
+                var obj = searcher.Get().Cast<ManagementObject>().FirstOrDefault();
+                instanceId = obj?["DeviceID"]?.ToString();
+            }
 
-            output = output.Trim();
-            if (output == "OK") return $"Device '{identifier}' {action}d successfully.";
-            if (output == "NotFound") return $"Could not find device matching '{identifier}'.";
-            return $"Error performing {action} on '{identifier}': {output} {error}";
+            if (string.IsNullOrEmpty(instanceId))
+            {
+                return $"Could not find device matching '{identifier}'.";
+            }
+
+            bool enable = action.Equals("Enable", StringComparison.OrdinalIgnoreCase);
+            bool success = PnpHelper.SetDeviceState(instanceId, enable);
+
+            if (success)
+            {
+                return $"Device '{identifier}' {action}d successfully.";
+            }
+            else
+            {
+                return $"Failed to {action} device '{identifier}' (Native error).";
+            }
         }
         catch (Exception ex)
         {

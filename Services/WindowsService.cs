@@ -45,6 +45,15 @@ public class WindowsService
     [DllImport("advapi32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern bool InitiateSystemShutdownEx(string? lpMachineName, string? lpMessage, uint dwTimeout, bool bForceAppsClosed, bool bRebootAfterShutdown, uint dwReason);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ExitWindowsEx(uint uFlags, uint dwReason);
+
+    // ExitWindowsEx flags
+    private const uint EWX_LOGOFF = 0x00000000;
+    private const uint EWX_FORCE = 0x00000004;
+    private const uint EWX_FORCEIFHUNG = 0x00000010;
+
     // Window Enumeration P/Invokes
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
@@ -129,19 +138,29 @@ public class WindowsService
         }
     }
 
-    public string Logout(bool allUsers = false, string? message = null, int timeout = 0)
+    public string Logout(bool allUsers = false, string? message = null, int timeout = 0, bool force = false)
     {
         try
         {
-            var sessionId = WTSGetActiveConsoleSessionId();
             if (allUsers)
             {
-                // In a real scenario, you'd iterate over all sessions
+                // Logoff all sessions via WTS
                 WTSLogoffSession(IntPtr.Zero, 0xFFFFFFFF, false);
                 return "Global logout initiated.";
             }
             else
             {
+                if (force)
+                {
+                    // Use ExitWindowsEx with EWX_FORCE to forcefully close all apps
+                    uint flags = EWX_LOGOFF | EWX_FORCE;
+                    if (ExitWindowsEx(flags, 0))
+                    {
+                        return "Forced logout initiated via ExitWindowsEx.";
+                    }
+                    // Fallback: try WTS if ExitWindowsEx fails
+                }
+                var sessionId = WTSGetActiveConsoleSessionId();
                 WTSLogoffSession(IntPtr.Zero, sessionId, false);
                 return $"Logout initiated for session {sessionId}.";
             }

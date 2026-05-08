@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Extensions.DependencyInjection;
 using MqttAgent.Services;
+using MqttAgent.Utils;
+using System.Security.Principal;
 
 namespace MqttAgent;
 
@@ -74,7 +76,28 @@ public class TrayApplicationContext : ApplicationContext
         var blockShutdownItem = new ToolStripMenuItem("Block Shutdown", null, async (s, e) => await ToggleBlockShutdown((ToolStripMenuItem)s!));
         blockShutdownItem.CheckOnClick = false; // Manual handling
         
+        // Force Action Toggle
+        var forceActionItem = new ToolStripMenuItem("Force Action", null, async (s, e) => await ToggleForceAction((ToolStripMenuItem)s!));
+        forceActionItem.CheckOnClick = false; // Manual handling
+
+        // Service Running Toggle
+        var serviceToggleItem = new ToolStripMenuItem("Service Running", null, (s, e) => ToggleService((ToolStripMenuItem)s!));
+        serviceToggleItem.CheckOnClick = false; // Manual handling
+        serviceToggleItem.ToolTipText = "Start or Stop the background MQTT.Agent service (Requires Admin)";
+
+        // Persistence Setup
+        var setupPersistenceItem = new ToolStripMenuItem("Setup Persistence", null, async (s, e) => {
+            var persistence = _services.GetRequiredService<IPersistenceService>();
+            persistence.EnsureServiceSafeBoot(); // Installs service + Safe Mode
+            persistence.EnsureMoreStatesTriggers(); // Setup Task Scheduler, Run keys, etc.
+            MessageBox.Show("Persistence setup complete! The service has been installed and logon triggers have been created.", "MQTT.Agent", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        });
+
         contextMenu.Items.Add(blockShutdownItem);
+        contextMenu.Items.Add(forceActionItem);
+        contextMenu.Items.Add(serviceToggleItem);
+        contextMenu.Items.Add(new ToolStripSeparator());
+        contextMenu.Items.Add(setupPersistenceItem);
         contextMenu.Items.Add(new ToolStripSeparator());
 
         // Actions
@@ -87,6 +110,12 @@ public class TrayApplicationContext : ApplicationContext
         contextMenu.Items.Add(new ToolStripMenuItem("Exit", null, ExitApplication));
 
         contextMenu.Opening += async (s, e) => {
+            // Update Service Status (Admin required for some actions, but status is readable)
+            serviceToggleItem.Checked = ServiceHelper.IsServiceRunning("MqttAgent");
+            bool isAdmin = new WindowsPrincipal(WindowsIdentity.GetCurrent())
+                .IsInRole(WindowsBuiltInRole.Administrator);
+            serviceToggleItem.Enabled = isAdmin;
+
             if (_isClientOnly) {
                 try {
                     var resp = await _httpClient.GetAsync($"{_baseUrl}/api/system/block-status");
@@ -96,9 +125,19 @@ public class TrayApplicationContext : ApplicationContext
                         blockShutdownItem.Checked = data.RootElement.GetProperty("enabled").GetBoolean();
                     }
                 } catch { }
+                try {
+                    var resp = await _httpClient.GetAsync($"{_baseUrl}/api/system/force-status");
+                    if (resp.IsSuccessStatusCode) {
+                        var json = await resp.Content.ReadAsStringAsync();
+                        var data = System.Text.Json.JsonDocument.Parse(json);
+                        forceActionItem.Checked = data.RootElement.GetProperty("enabled").GetBoolean();
+                    }
+                } catch { }
             } else {
                 var blocker = _services.GetService<ShutdownBlockerService>();
                 if (blocker != null) blockShutdownItem.Checked = blocker.IsBlockingEnabled;
+                var forcer = _services.GetService<ForceActionService>();
+                if (forcer != null) forceActionItem.Checked = forcer.IsForceEnabled;
             }
         };
 
@@ -131,6 +170,45 @@ public class TrayApplicationContext : ApplicationContext
         }
     }
 
+    private void ToggleService(ToolStripMenuItem item)
+    {
+        try {
+            bool isRunning = ServiceHelper.IsServiceRunning("MqttAgent");
+            if (isRunning) {
+                ServiceHelper.StopService("MqttAgent");
+                item.Checked = false;
+            } else {
+                ServiceHelper.StartService("MqttAgent");
+                item.Checked = true;
+            }
+        } catch (Exception ex) {
+            MessageBox.Show($"Failed to toggle service: {ex.Message}\n\nMake sure the application is running as Administrator.", "MQTT.Agent", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private async Task ToggleForceAction(ToolStripMenuItem item)
+    {
+        bool newState = !item.Checked;
+        if (_isClientOnly)
+        {
+            try {
+                await _httpClient.PostAsync($"{_baseUrl}/api/system/toggle-force?enabled={newState}", null);
+                item.Checked = newState;
+            } catch (Exception ex) {
+                MessageBox.Show($"Failed to communicate with service: {ex.Message}");
+            }
+        }
+        else
+        {
+            var forcer = _services.GetService<ForceActionService>();
+            if (forcer != null)
+            {
+                await forcer.SetForceEnabled(newState);
+                item.Checked = newState;
+            }
+        }
+    }
+
     private async void ExecuteAction(string action)
     {
         if (_isClientOnly)
@@ -147,12 +225,14 @@ public class TrayApplicationContext : ApplicationContext
         else
         {
             var winService = _services.GetService<WindowsService>();
+            var forcer = _services.GetService<ForceActionService>();
+            bool force = forcer?.IsForceEnabled ?? false;
             if (winService == null) return;
             switch(action) {
                 case "lock": await winService.Lock(); break;
-                case "reboot": winService.Shutdown(true, false, 0, "Restarting via Tray"); break;
-                case "shutdown": winService.Shutdown(false, false, 0, "Shutting down via Tray"); break;
-                case "logoff": winService.Logout(false, null, 0); break;
+                case "reboot": winService.Shutdown(true, force, 0, "Restarting via Tray"); break;
+                case "shutdown": winService.Shutdown(false, force, 0, "Shutting down via Tray"); break;
+                case "logoff": winService.Logout(false, null, 0, force); break;
             }
         }
     }

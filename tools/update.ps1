@@ -119,7 +119,7 @@ if ($Publish) {
     
     # Git operations
     git add .
-    git commit -m "feat: Security Update - Removed hardcoded credentials and enforced token usage (v$newVersion)"
+    git commit -m "v$newVersion"
     git push
 
     # GH Release
@@ -129,16 +129,13 @@ if ($Publish) {
 }
 
 if ($Install) {
-    Write-Host "Ensuring service is registered..." -ForegroundColor Cyan
+    Write-Host "Registering service and persistence via the agent itself..." -ForegroundColor Cyan
     $TargetExe = if ($Deploy) { $DeployPath } else { $ExePath }
-    if (-not (Get-Service $ServiceName -ErrorAction SilentlyContinue)) {
-        Write-Host "Creating service via sudo..." -ForegroundColor Gray
-        sudo sc.exe create $ServiceName binPath= "$TargetExe --service -token $Token" start= auto DisplayName= "MQTT Agent"
-    } else {
-        Write-Host "Updating service config via sudo..." -ForegroundColor Gray
-        sudo sc.exe config $ServiceName binPath= "$TargetExe --service -token $Token"
-    }
-
+    
+    # Use the agent's native install logic
+    sudo $TargetExe --install
+    # --more-states
+    
     Write-Host "Ensuring firewall rule for port $Port..." -ForegroundColor Cyan
     $RuleName = "MQTT Agent"
     sudo powershell -Command "if (Get-NetFirewallRule -DisplayName '$RuleName' -ErrorAction SilentlyContinue) { Remove-NetFirewallRule -DisplayName '$RuleName' }; New-NetFirewallRule -DisplayName '$RuleName' -Direction Inbound -Program '$TargetExe' -Action Allow -LocalPort $Port -Protocol TCP"

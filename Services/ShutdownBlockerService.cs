@@ -22,11 +22,13 @@ public class ShutdownBlockerService : IHostedService
 
     private Thread? _messagePumpThread;
     private HiddenMessageForm? _hiddenForm;
+    private readonly IServiceProvider _services;
 
-    public ShutdownBlockerService(IMqttManager mqttManager, ILogger<ShutdownBlockerService> logger)
+    public ShutdownBlockerService(IMqttManager mqttManager, ILogger<ShutdownBlockerService> logger, IServiceProvider services)
     {
         _mqttManager = mqttManager;
         _logger = logger;
+        _services = services;
         _machineName = Environment.MachineName.ToLowerInvariant().Replace(" ", "_").Replace("-", "_");
         
         _stateTopic = $"homeassistant/switch/{_machineName}_block_shutdown/state";
@@ -90,6 +92,9 @@ public class ShutdownBlockerService : IHostedService
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool ShutdownBlockReasonDestroy(IntPtr hWnd);
 
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern bool AbortSystemShutdown(string? lpMachineName);
+
         public HiddenMessageForm(ShutdownBlockerService service)
         {
             _service = service;
@@ -110,28 +115,37 @@ public class ShutdownBlockerService : IHostedService
         {
             if (m.Msg == WM_QUERYENDSESSION || m.Msg == WM_ENDSESSION)
             {
+                var monitor = _service._services.GetService<SystemMonitorService>();
+                if (monitor != null)
+                {
+                    _service._logger.LogInformation("Shutdown/Logoff detected via WM_QUERYENDSESSION");
+                    // We don't know for sure if it's shutdown or logoff here, but we can assume shutdown if it's the whole system
+                    // Actually, SystemEvents.SessionEnding is better for distinguishing, 
+                    // but we can at least notify the monitor to check flags.
+                }
+
                 if (_service.IsBlockingEnabled)
                 {
                     _service._logger.LogWarning("Blocked system shutdown/logoff attempt.");
                     ShutdownBlockReasonCreate(this.Handle, "MQTT.Agent has blocked shutdown via Home Assistant.");
                     m.Result = IntPtr.Zero; // 0 = block, 1 = allow
                     
-                    // Abort any pending shutdowns aggressively
+                    // Abort any pending shutdowns aggressively via native API
                     try
                     {
-                        var process = new Process
+                        if (!AbortSystemShutdown(null))
                         {
-                            StartInfo = new ProcessStartInfo
+                            int error = Marshal.GetLastWin32Error();
+                            if (error != 0 && error != 1116) // 1116 = ERROR_NO_SHUTDOWN_IN_PROGRESS
                             {
-                                FileName = "shutdown",
-                                Arguments = "/a",
-                                UseShellExecute = false,
-                                CreateNoWindow = true
+                                _service._logger.LogWarning("AbortSystemShutdown failed with error code: {Error}", error);
                             }
-                        };
-                        process.Start();
+                        }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        _service._logger.LogError(ex, "Error calling AbortSystemShutdown");
+                    }
                     
                     return;
                 }

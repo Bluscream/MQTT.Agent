@@ -5,6 +5,7 @@ using Microsoft.Win32;
 using Microsoft.Win32.TaskScheduler;
 using Microsoft.Extensions.Logging;
 using System.Linq;
+using MqttAgent.Utils;
 
 namespace MqttAgent.Services
 {
@@ -12,12 +13,15 @@ namespace MqttAgent.Services
     {
         void EnsureServiceSafeBoot();
         void EnsureMoreStatesTriggers();
+        void Uninstall();
     }
 
     public class PersistenceService : IPersistenceService
     {
         private readonly ILogger<PersistenceService> _logger;
         private readonly string _exePath;
+        private const string ServiceName = "MqttAgent";
+        private const string DisplayName = "MQTT.Agent PC Monitor";
 
         public PersistenceService(ILogger<PersistenceService> logger)
         {
@@ -32,29 +36,52 @@ namespace MqttAgent.Services
             RegisterSafeBoot("Network");
         }
 
+        public void Uninstall()
+        {
+            try
+            {
+                _logger.LogInformation("Uninstalling service and cleaning up persistence...");
+                ServiceHelper.UninstallService(ServiceName);
+                
+                using (TaskService ts = new TaskService())
+                {
+                    ts.RootFolder.DeleteTask(ServiceName + "_Logon", false);
+                    var folder = ts.GetFolder(@"\mqtt\events");
+                    if (folder != null)
+                    {
+                        foreach (var task in folder.Tasks) folder.DeleteTask(task.Name);
+                        ts.RootFolder.DeleteFolder(@"\mqtt\events", false);
+                    }
+                }
+
+                Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\SafeBoot\Minimal", true)?.DeleteSubKeyTree(ServiceName, false);
+                Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\SafeBoot\Network", true)?.DeleteSubKeyTree(ServiceName, false);
+                Registry.CurrentUser.OpenSubKey(@"Environment", true)?.DeleteValue("UserInitMprLogonScript", false);
+                Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true)?.DeleteValue(ServiceName, false);
+                
+                var startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+                var batchPath = Path.Combine(startupFolder, ServiceName + "_Startup.bat");
+                if (File.Exists(batchPath)) File.Delete(batchPath);
+
+                _logger.LogInformation("Persistence cleanup complete.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed during uninstall");
+            }
+        }
+
         private void InstallAndStartService()
         {
-            const string serviceName = "HassWinStatus";
-            _logger.LogInformation("Checking if service '{ServiceName}' is installed...", serviceName);
+            _logger.LogInformation("Checking if service '{ServiceName}' is installed...", ServiceName);
 
             try
             {
-                // Check if service exists using sc query
-                var queryProc = Process.Start(new ProcessStartInfo
-                {
-                    FileName = "sc.exe",
-                    Arguments = $"query {serviceName}",
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                });
-                queryProc?.WaitForExit();
-
-                if (queryProc?.ExitCode != 0)
+                if (!ServiceHelper.IsServiceInstalled(ServiceName))
                 {
                     _logger.LogInformation("Service not found. Installing...");
-                    var installArgs = $"create {serviceName} binPath= \"\\\"{_exePath}\\\" --service\" start= auto DisplayName= \"HassWinStatus PC Monitor\"";
-                    Process.Start("sc.exe", installArgs)?.WaitForExit();
+                    string binPath = $"\"{_exePath}\" --service";
+                    ServiceHelper.InstallService(ServiceName, DisplayName, binPath);
                     _logger.LogInformation("Service installed successfully.");
                 }
                 else
@@ -63,7 +90,7 @@ namespace MqttAgent.Services
                 }
 
                 _logger.LogInformation("Ensuring service is started...");
-                Process.Start("sc.exe", $"start {serviceName}")?.WaitForExit();
+                ServiceHelper.StartService(ServiceName);
             }
             catch (Exception ex)
             {
@@ -78,7 +105,7 @@ namespace MqttAgent.Services
                 using var baseKey = Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Control\SafeBoot\{mode}", true);
                 if (baseKey != null)
                 {
-                    using var svcKey = baseKey.CreateSubKey("HassWinStatus");
+                    using var svcKey = baseKey.CreateSubKey(ServiceName);
                     svcKey?.SetValue(null, "Service");
                     _logger.LogInformation("Service registered for Safe Mode ({Mode}).", mode);
                 }
@@ -91,7 +118,7 @@ namespace MqttAgent.Services
 
         public void EnsureMoreStatesTriggers()
         {
-            _logger.LogInformation("Ensuring fine-grained logon triggers (--more-states)...");
+            _logger.LogInformation("Ensuring fine-grained logon triggers...");
 
             SetupScheduledTask();
             EnsureEventTasks();
@@ -108,7 +135,6 @@ namespace MqttAgent.Services
                 using TaskService ts = new TaskService();
                 var folderPath = @"\mqtt\events";
                 
-                // Ensure the folder exists recursively
                 var parts = folderPath.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
                 TaskFolder currentFolder = ts.RootFolder;
                 foreach (var part in parts)
@@ -150,7 +176,7 @@ namespace MqttAgent.Services
                 foreach (var taskInfo in tasksToCreate)
                 {
                     TaskDefinition td = ts.NewTask();
-                    td.RegistrationInfo.Description = $"HassWinStatus {taskInfo.Name} (Managed)";
+                    td.RegistrationInfo.Description = $"{ServiceName} {taskInfo.Name} (Managed)";
                     td.Triggers.Add(taskInfo.Trigger);
                     td.Actions.Add(new ExecAction(_exePath, $"--entity-state \"{taskInfo.State}\" --entity-attributes \"{{\\\"source\\\":\\\"Task Scheduler\\\"}}\""));
                     
@@ -177,9 +203,8 @@ namespace MqttAgent.Services
                 using var key = Registry.LocalMachine.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\RunOnce", true);
                 if (key != null)
                 {
-                    // The asterisk (*) prefix forces the command to run in Safe Mode.
                     var cmd = $"\"{_exePath}\" --entity-state \"Safe Mode Startup (RunOnce)\"";
-                    key.SetValue("*HassWinStatus", cmd);
+                    key.SetValue("*" + ServiceName, cmd);
                     _logger.LogInformation("Registry RunOnce Safe Mode asterisk hook ensured.");
                 }
             }
@@ -195,16 +220,15 @@ namespace MqttAgent.Services
             {
                 using TaskService ts = new TaskService();
                 TaskDefinition td = ts.NewTask();
-                td.RegistrationInfo.Description = "HassWinStatus Logon Trigger (Scheduled Task)";
+                td.RegistrationInfo.Description = $"{ServiceName} Logon Trigger (Scheduled Task)";
                 td.Triggers.Add(new LogonTrigger());
                 td.Actions.Add(new ExecAction(_exePath, "--entity-state \"Logged In (Scheduled Task)\""));
                 
-                // Set settings to allow parallel runs and don't stop after 3 days
                 td.Settings.MultipleInstances = TaskInstancesPolicy.IgnoreNew;
                 td.Settings.ExecutionTimeLimit = TimeSpan.Zero;
 
-                ts.RootFolder.RegisterTaskDefinition("HassWinStatus_Logon", td);
-                _logger.LogInformation("Scheduled Task 'HassWinStatus_Logon' ensured.");
+                ts.RootFolder.RegisterTaskDefinition(ServiceName + "_Logon", td);
+                _logger.LogInformation("Scheduled Task '{ServiceName}_Logon' ensured.", ServiceName);
             }
             catch (Exception ex)
             {
@@ -238,7 +262,7 @@ namespace MqttAgent.Services
                 if (key != null)
                 {
                     var cmd = $"\"{_exePath}\" --entity-state \"Logged In (Run Key)\"";
-                    key.SetValue("HassWinStatus", cmd);
+                    key.SetValue(ServiceName, cmd);
                     _logger.LogInformation("Registry Run key ensured.");
                 }
             }
@@ -253,7 +277,7 @@ namespace MqttAgent.Services
             try
             {
                 var startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
-                var batchPath = Path.Combine(startupFolder, "HassWinStatus_Startup.bat");
+                var batchPath = Path.Combine(startupFolder, ServiceName + "_Startup.bat");
                 var content = $"@echo off\nstart \"\" \"{_exePath}\" --entity-state \"Logged In (Startup)\"";
                 
                 File.WriteAllText(batchPath, content);

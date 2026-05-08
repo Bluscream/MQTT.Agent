@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
+using Microsoft.Win32;
 using System.Text.Json;
 using System.Linq;
 using System.Management;
@@ -24,6 +25,9 @@ namespace MqttAgent.Services
         private int _updateIntervalSeconds = 60;
         private DateTime _idleStartTime = DateTime.MaxValue;
         private bool _isUpdating = false;
+        private bool _isShuttingDown = false;
+        private bool _isLoggingIn = false;
+        private bool _isLoggingOut = false;
         private EventLogWatcher? _updateWatcher;
         private ManagementEventWatcher? _arrivalWatcher;
         private ManagementEventWatcher? _removalWatcher;
@@ -49,6 +53,13 @@ namespace MqttAgent.Services
 
             SetupUpdateMonitoring();
             SetupDeviceMonitoring();
+            
+            SystemEvents.SessionSwitch += (s, e) => HandleSessionChange(0, (SessionChangeReason)e.Reason);
+            SystemEvents.SessionEnding += (s, e) => {
+                if (e.Reason == SessionEndReasons.SystemShutdown) _isShuttingDown = true;
+                else _isLoggingOut = true;
+                _ = UpdateState();
+            };
         }
 
         private void SetupUpdateMonitoring()
@@ -139,12 +150,19 @@ namespace MqttAgent.Services
         {
             _logger.LogInformation("Session change detected: Session {Id}, Reason {Reason}", sessionId, reason);
             
+            if (reason == SessionChangeReason.SessionLogon) _isLoggingIn = true;
+            if (reason == SessionChangeReason.SessionLogoff) _isLoggingOut = true;
+
             await ReportRichEvent($"Session {reason}", "session_change", new { 
                 session_id = sessionId,
                 reason = reason.ToString()
             });
             
             await UpdateState();
+
+            // Reset transient flags after update
+            if (reason == SessionChangeReason.SessionLogon) _isLoggingIn = false;
+            if (reason == SessionChangeReason.SessionLogoff) _isLoggingOut = false;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -206,6 +224,18 @@ namespace MqttAgent.Services
             if (SystemHelper.IsSafeMode())
             {
                 state = "Safe Mode";
+            }
+            else if (_isShuttingDown)
+            {
+                state = "Shutting Down";
+            }
+            else if (_isLoggingIn)
+            {
+                state = "Logging In";
+            }
+            else if (_isLoggingOut)
+            {
+                state = "Logging Out";
             }
             else if (_isUpdating)
             {
@@ -429,20 +459,20 @@ namespace MqttAgent.Services
                     if (temp > 0) attrs.Add("temp", Math.Round(temp));
                     if (power > 0) attrs.Add("power", Math.Round(power, 1));
                     
-                    // For RAM/GPU memory, values are now normalized to GB
+                    // For RAM/GPU memory, values are now normalized to GB (numeric)
                     if (used > 0 || free > 0)
                     {
                         if (hardware.HardwareType == HardwareType.Memory)
                         {
-                            if (used > 0) attrs.Add("used", $"{used.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} GB");
-                            if (free > 0) attrs.Add("free", $"{free.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} GB");
-                            if (total > 0) attrs.Add("total", $"{total.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} GB");
+                            if (used > 0) attrs.Add("used", Math.Round(used, 1));
+                            if (free > 0) attrs.Add("free", Math.Round(free, 1));
+                            if (total > 0) attrs.Add("total", Math.Round(total, 1));
                         }
                         else
                         {
-                            if (used > 0) attrs.Add("vram_used", $"{used.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} GB");
-                            if (free > 0) attrs.Add("vram_free", $"{free.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} GB");
-                            if (total > 0) attrs.Add("vram_total", $"{total.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} GB");
+                            if (used > 0) attrs.Add("vram_used", Math.Round(used, 1));
+                            if (free > 0) attrs.Add("vram_free", Math.Round(free, 1));
+                            if (total > 0) attrs.Add("vram_total", Math.Round(total, 1));
                             if (total > 0 && used > 0)
                             {
                                 attrs.Add("vram_usage", Math.Round(used / total * 100));
@@ -467,13 +497,6 @@ namespace MqttAgent.Services
                 if (cpuEntry.attrs != null)
                 {
                     cpuEntry.attrs["total_power"] = Math.Round(totalPower, 1);
-                    // Include breakdown so user can see what contributes
-                    var breakdown = new Dictionary<string, object>();
-                    foreach (var (source, watts) in allPowerReadings)
-                    {
-                        breakdown[source] = Math.Round(watts, 1);
-                    }
-                    cpuEntry.attrs["power_breakdown"] = breakdown;
                 }
             }
 
@@ -506,11 +529,10 @@ namespace MqttAgent.Services
 
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
-            _logger.LogInformation("System Monitor Service stopping (publishing unavailable)...");
-            var stateTopic = $"homeassistant/select/{_mqtt.UniqueId}/state";
-            await _mqtt.EnqueueAsync(stateTopic, "unavailable", true);
-            await Task.Delay(500, cancellationToken); // Give it time to flush
-
+            _logger.LogInformation("System Monitor Service stopping (Shutting Down)...");
+            _isShuttingDown = true;
+            await UpdateState();
+            
             _updateWatcher?.Dispose();
             _arrivalWatcher?.Dispose();
             _removalWatcher?.Dispose();
