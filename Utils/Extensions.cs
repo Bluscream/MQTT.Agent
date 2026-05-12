@@ -57,12 +57,12 @@ public static class Extensions
     #endregion
 
     #region WMI Extensions
-    public static string? GetPropertyString(this ManagementObject obj, string propertyName, string? defaultValue = null)
+    public static string? GetPropertyString(this ManagementBaseObject obj, string propertyName, string? defaultValue = null)
     {
         try { return obj[propertyName]?.ToString() ?? defaultValue; } catch { return defaultValue; }
     }
 
-    public static long GetPropertyLong(this ManagementObject obj, string propertyName, long defaultValue = 0)
+    public static long GetPropertyLong(this ManagementBaseObject obj, string propertyName, long defaultValue = 0)
     {
         try { return Convert.ToInt64(obj[propertyName] ?? defaultValue); } catch { return defaultValue; }
     }
@@ -185,6 +185,13 @@ public static class Extensions
         var trueValues = new[] { "true", "ok", "yes", "1", "y", "enabled", "on" };
         return trueValues.Contains(input.ToLowerInvariant());
     }
+
+    public static string ToEnvKey(this string key, string? prefix = null)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return key;
+        var envKey = key.ToUpperInvariant().Replace("-", "_").Replace(":", "_");
+        return prefix != null ? $"{prefix}{envKey}" : envKey;
+    }
     #endregion
 
     #region Boolean Extensions
@@ -249,6 +256,34 @@ public static class Extensions
         if (element.TryGetProperty(propertyName, out var prop) && prop.TryGetInt32(out var val))
             return val;
         return defaultValue;
+    }
+    #endregion
+
+    #region Configuration Extensions
+    public static string? GetWithAliases(this IConfiguration config, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            var val = config[$"MqttAgent:{key}"] ?? config[key] ?? config[key.ToLowerInvariant()];
+            if (!string.IsNullOrEmpty(val)) return val;
+        }
+        return null;
+    }
+
+    public static string? GetArgValue(this IEnumerable<string> args, string arg)
+    {
+        var argList = args.ToList();
+        var lowerArg = arg.ToLowerInvariant();
+        var index = argList.FindIndex(a => a.Equals(lowerArg, StringComparison.OrdinalIgnoreCase));
+        if (index >= 0 && index < argList.Count - 1) return argList[index + 1];
+
+        var prefixed = argList.FirstOrDefault(a => a.StartsWith($"{lowerArg}:", StringComparison.OrdinalIgnoreCase));
+        return prefixed?.Split(':', 2).LastOrDefault();
+    }
+
+    public static bool HasArg(this IEnumerable<string> args, string arg)
+    {
+        return args.Any(a => a.Equals(arg, StringComparison.OrdinalIgnoreCase));
     }
     #endregion
 }
