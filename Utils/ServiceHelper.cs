@@ -48,6 +48,23 @@ namespace MqttAgent.Utils
             string? lpPassword);
 
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ChangeServiceConfig(
+            IntPtr hService,
+            uint dwServiceType,
+            uint dwStartType,
+            uint dwErrorControl,
+            string? lpBinaryPathName,
+            string? lpLoadOrderGroup,
+            IntPtr lpdwTagId,
+            string? lpDependencies,
+            string? lpServiceStartName,
+            string? lpPassword,
+            string? lpDisplayName);
+
+        private const uint SERVICE_NO_CHANGE = 0xFFFFFFFF;
+
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         private static extern IntPtr OpenService(IntPtr hSCManager, string lpServiceName, uint dwDesiredAccess);
 
         [DllImport("advapi32.dll", SetLastError = true)]
@@ -109,6 +126,40 @@ namespace MqttAgent.Utils
                         throw new Win32Exception(err);
                 }
                 else
+                {
+                    CloseServiceHandle(svc);
+                }
+            }
+            finally
+            {
+                CloseServiceHandle(scm);
+            }
+        }
+
+        public static void UpdateServiceBinaryPath(string serviceName, string binaryPath)
+        {
+            IntPtr scm = OpenSCManager(null, null, SC_MANAGER_ALL_ACCESS);
+            if (scm == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+
+            try
+            {
+                IntPtr svc = OpenService(scm, serviceName, SERVICE_ALL_ACCESS);
+                if (svc == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+
+                try
+                {
+                    if (!ChangeServiceConfig(
+                        svc,
+                        SERVICE_NO_CHANGE,
+                        SERVICE_NO_CHANGE,
+                        SERVICE_NO_CHANGE,
+                        binaryPath,
+                        null, IntPtr.Zero, null, null, null, null))
+                    {
+                        throw new Win32Exception(Marshal.GetLastWin32Error());
+                    }
+                }
+                finally
                 {
                     CloseServiceHandle(svc);
                 }

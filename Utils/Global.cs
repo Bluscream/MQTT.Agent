@@ -22,6 +22,7 @@ namespace MqttAgent.Utils
             public const string Banner = "--banner";
             public const string EntityState = "--entity-state";
             public const string EntityAttributes = "--entity-attributes";
+            public const string StartTray = "--start-tray";
             public const string Token = "-token";
         }
 
@@ -30,6 +31,7 @@ namespace MqttAgent.Utils
         public static bool IsServiceMode { get; } = Config.GetBool("service");
         public static bool IsInstall { get; } = Config.GetBool("install");
         public static bool IsUninstall { get; } = Config.GetBool("uninstall");
+        public static bool IsStartTrayEnabled { get; } = Config.GetBool("start-tray");
         
         public static bool IsScreenshotHelper { get; } = Config.GetBool("screenshot-helper");
         public static bool IsMessageBoxHelper { get; } = Config.GetBool("messagebox");

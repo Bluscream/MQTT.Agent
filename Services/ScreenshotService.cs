@@ -25,12 +25,10 @@ namespace MqttAgent.Services
             _monitorService = monitorService;
         }
 
-        public async Task<string> CaptureScreenshot(string desktop = "Default", int quality = 75, string display = "all", string format = "png")
+        public async Task<byte[]?> CaptureScreenshot(string desktop = "Default", int quality = 75, string display = "all", string format = "png")
         {
             List<string> errors = new List<string>();
             bool usePng = string.Equals(format, "png", StringComparison.OrdinalIgnoreCase);
-            string mimeType = usePng ? "image/png" : "image/jpeg";
-            string dataUriPrefix = $"data:{mimeType};base64,";
 
             // Resolve friendly name to device name or index if needed
             string resolvedDisplay = await _monitorService.ResolveMonitorName(display);
@@ -38,9 +36,9 @@ namespace MqttAgent.Services
             {
                 Console.WriteLine($"[ScreenshotService] Resolved friendly name '{display}' to '{resolvedDisplay}'");
             }
-
+ 
             // Helper to try a specific desktop with multiple methods
-            async Task<string?> TryCaptureDesktop(string targetDesktop)
+            async Task<byte[]?> TryCaptureDesktop(string targetDesktop)
             {
                 string desktopStr = targetDesktop.Contains("\\") ? targetDesktop : $"winsta0\\{targetDesktop}";
                 var sessionId = _processService.GetActiveConsoleSessionId();
@@ -49,12 +47,12 @@ namespace MqttAgent.Services
                 // Use application-relative path for extraction to ensure Session 1 user can access it
                 string tempDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "temp");
                 if (!Directory.Exists(tempDir)) Directory.CreateDirectory(tempDir);
-
+ 
                 if (!string.IsNullOrEmpty(helperPath))
                 {
                     string args = $"--screenshot-helper --quality {quality} --display {resolvedDisplay}";
                     if (usePng) args += " --png";
-
+ 
                     // Method 1: Helper as Active User (Best for 'Default' desktop to bypass DRM/UAC)
                     if (sessionId > 0 && targetDesktop.Equals("Default", StringComparison.OrdinalIgnoreCase))
                     {
@@ -73,7 +71,7 @@ namespace MqttAgent.Services
                                 if (bytes.Length > 100) 
                                 {
                                     Console.WriteLine($"[ScreenshotService] SUCCESS (UserHelper): {bytes.Length} bytes");
-                                    return dataUriPrefix + Convert.ToBase64String(bytes);
+                                    return bytes;
                                 }
                                 else errors.Add($"User Helper on {desktopStr} returned invalid file ({bytes.Length} bytes).");
                             }
@@ -81,7 +79,7 @@ namespace MqttAgent.Services
                         }
                         catch (Exception ex) { errors.Add($"User Helper Exception: {ex.Message}"); }
                     }
-
+ 
                     // Method 2: Helper as SYSTEM (Best for 'Winlogon' or when no user is logged in)
                     try
                     {
@@ -98,7 +96,7 @@ namespace MqttAgent.Services
                             if (bytes.Length > 100) 
                             {
                                 Console.WriteLine($"[ScreenshotService] SUCCESS (SysHelper): {bytes.Length} bytes");
-                                return dataUriPrefix + Convert.ToBase64String(bytes);
+                                return bytes;
                             }
                             else errors.Add($"SYSTEM Helper on {desktopStr} returned invalid/empty file ({bytes.Length} bytes).");
                         }
@@ -110,14 +108,14 @@ namespace MqttAgent.Services
                 {
                     errors.Add("Helper executable path not found.");
                 }
-
+ 
                 // Method 3: Direct Capture from Service Process
                 try
                 {
                     Console.WriteLine($"[ScreenshotService] Trying Direct Capture on {desktopStr} (Display: {resolvedDisplay})");
                     var allScreens = System.Windows.Forms.Screen.AllScreens;
                     System.Windows.Forms.Screen[] targets;
-
+ 
                     if (resolvedDisplay.Equals("all", StringComparison.OrdinalIgnoreCase))
                     {
                         targets = allScreens;
@@ -132,7 +130,7 @@ namespace MqttAgent.Services
                             string.Equals(s.DeviceName, resolvedDisplay, StringComparison.OrdinalIgnoreCase) ||
                             resolvedDisplay.Contains(s.DeviceName.Replace("\\\\.\\", ""), StringComparison.OrdinalIgnoreCase)
                         ).ToArray();
-
+ 
                         if (byName.Length > 0)
                             targets = byName;
                         else
@@ -184,7 +182,7 @@ namespace MqttAgent.Services
                                 if (bytes.Length > 100)
                                 {
                                     Console.WriteLine($"[ScreenshotService] SUCCESS (Direct): {bytes.Length} bytes");
-                                    return dataUriPrefix + Convert.ToBase64String(bytes);
+                                    return bytes;
                                 }
                                 else
                                     errors.Add($"Direct capture on {desktopStr} resulted in empty image.");
@@ -205,7 +203,7 @@ namespace MqttAgent.Services
             }
 
             // Attempt requested desktop first
-            string? result = await TryCaptureDesktop(desktop);
+            byte[]? result = await TryCaptureDesktop(desktop);
             if (result != null) return result;
 
             // If requested was Default and we are locked/logged out, fallback to Winlogon automatically!
@@ -217,7 +215,8 @@ namespace MqttAgent.Services
                 if (result != null) return result;
             }
 
-            return "ERROR: All screenshot methods failed.\n" + string.Join("\n", errors);
+            Console.Error.WriteLine("ERROR: All screenshot methods failed.\n" + string.Join("\n", errors));
+            return null;
         }
 
         [DllImport("user32.dll", SetLastError = true)]

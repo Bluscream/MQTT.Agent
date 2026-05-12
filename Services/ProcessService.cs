@@ -6,11 +6,19 @@ using System.Threading;
 using MqttAgent.Utils;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.Extensions.Logging;
 
 namespace MqttAgent.Services;
 
 public class ProcessService
 {
+    private readonly ILogger<ProcessService> _logger;
+
+    public ProcessService(ILogger<ProcessService> logger)
+    {
+        _logger = logger;
+    }
+
     // Windows API P/Invoke declarations for user session and elevation
     [DllImport("wtsapi32.dll", SetLastError = true)]
     private static extern bool WTSQueryUserToken(uint SessionId, out IntPtr phToken);
@@ -44,19 +52,42 @@ public class ProcessService
             var error = Marshal.GetLastWin32Error();
             if (!result || error != 0)
             {
-                Console.WriteLine($"[ProcessService] AdjustTokenPrivileges({privilegeName}) Result: {result}, Error: {error}");
+                _logger.LogWarning("[ProcessService] AdjustTokenPrivileges({Privilege}) Result: {Result}, Error: {Error}", privilegeName, result, error);
             }
             return result && error == 0;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ProcessService] EnablePrivilege Exception: {ex.Message}");
+            _logger.LogError(ex, "[ProcessService] EnablePrivilege Exception: {Message}", ex.Message);
             return false;
         }
         finally
         {
             if (hToken != IntPtr.Zero) CloseHandle(hToken);
         }
+    }
+
+    private IntPtr TryStealUserToken(uint sessionId)
+    {
+        var processes = Process.GetProcessesByName("explorer");
+        foreach (var p in processes)
+        {
+            if (p.SessionId == (int)sessionId)
+            {
+                IntPtr hProcess = NativeMethods.OpenProcess(NativeMethods.PROCESS_QUERY_INFORMATION, false, (uint)p.Id);
+                if (hProcess != IntPtr.Zero)
+                {
+                    IntPtr hToken = IntPtr.Zero;
+                    if (NativeMethods.OpenProcessToken(hProcess, NativeMethods.TOKEN_DUPLICATE | NativeMethods.TOKEN_QUERY, out hToken))
+                    {
+                        NativeMethods.CloseHandle(hProcess);
+                        return hToken;
+                    }
+                    NativeMethods.CloseHandle(hProcess);
+                }
+            }
+        }
+        return IntPtr.Zero;
     }
 
     [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
@@ -150,6 +181,7 @@ public class ProcessService
     private const uint TOKEN_ADJUST_SESSIONID = 0x0100;
     private const uint TOKEN_ASSIGN_PRIMARY = 0x0001;
     private const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
+    private const uint CREATE_NO_WINDOW = 0x08000000;
 
     private ProcessWindowStyle ParseWindowStyle(string? windowStyle)
     {
@@ -289,6 +321,12 @@ public class ProcessService
         var processInfo = new PROCESS_INFORMATION();
         var commandLine = $"\"{command}\" {arguments}";
 
+        uint creationFlags = CREATE_UNICODE_ENVIRONMENT;
+        if (windowStyle == ProcessWindowStyle.Hidden)
+        {
+            creationFlags |= CREATE_NO_WINDOW;
+        }
+
         bool success;
         if (token.HasValue && token.Value != IntPtr.Zero)
         {
@@ -299,7 +337,7 @@ public class ProcessService
                 IntPtr.Zero,
                 IntPtr.Zero,
                 false,
-                CREATE_UNICODE_ENVIRONMENT,
+                creationFlags,
                 IntPtr.Zero,
                 null,
                 ref startupInfo,
@@ -313,7 +351,7 @@ public class ProcessService
                 IntPtr.Zero,
                 IntPtr.Zero,
                 false,
-                CREATE_UNICODE_ENVIRONMENT,
+                creationFlags,
                 IntPtr.Zero,
                 null,
                 ref startupInfo,
@@ -368,7 +406,14 @@ public class ProcessService
 
                     if (!NativeMethods.WTSQueryUserToken(sessionId, out userToken))
                     {
-                        throw new Exception($"Failed to get user token for session {sessionId}. Error: {Marshal.GetLastWin32Error()}");
+                        var err = Marshal.GetLastWin32Error();
+                        _logger.LogWarning("WTSQueryUserToken failed for session {Session}. Error: {Error}. Trying token stealing fallback...", sessionId, err);
+                        
+                        userToken = TryStealUserToken(sessionId);
+                        if (userToken == IntPtr.Zero)
+                        {
+                            throw new Exception($"Failed to get user token for session {sessionId}. (WTS Error: {err})");
+                        }
                     }
 
                     // Duplicate token to primary token for CreateProcessAsUser

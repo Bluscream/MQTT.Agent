@@ -193,6 +193,12 @@ public static class Extensions
         var envKey = key.ToUpperInvariant().Replace("-", "_").Replace(":", "_");
         return prefix != null ? $"{prefix}{envKey}" : envKey;
     }
+
+    public static string ToBase64DataUri(this byte[] bytes, string format = "png")
+    {
+        string mimeType = format.ToLower().Contains("png") ? "image/png" : "image/jpeg";
+        return $"data:{mimeType};base64,{Convert.ToBase64String(bytes)}";
+    }
     #endregion
 
     #region Boolean Extensions

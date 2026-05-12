@@ -6,6 +6,7 @@ param (
     [switch]$Install,
     [switch]$Start,
     [switch]$MoreStates,
+    [switch]$StartTray,
     [string]$DeployPath = "D:\Scripts\MqttAgent.exe"
 )
 
@@ -134,28 +135,35 @@ if ($Install) {
     $TargetExe = if ($Deploy) { $DeployPath } else { $ExePath }
     
     # Use the agent's native install logic
-    sudo $TargetExe --install
-    # --more-states
+    $InstallArgs = @("--install")
+    if ($MoreStates) { $InstallArgs += "--more-states" }
+    if ($StartTray) { $InstallArgs += "--start-tray" }
+    sudo $TargetExe $InstallArgs
     
     Write-Host "Ensuring firewall rule for port $Port..." -ForegroundColor Cyan
     $RuleName = "MQTT Agent"
-    sudo powershell -Command "if (Get-NetFirewallRule -DisplayName '$RuleName' -ErrorAction SilentlyContinue) { Remove-NetFirewallRule -DisplayName '$RuleName' }; New-NetFirewallRule -DisplayName '$RuleName' -Direction Inbound -Program '$TargetExe' -Action Allow -LocalPort $Port -Protocol TCP"
-
-    if ($MoreStates) {
-        Write-Host "Enabling MoreStates in service configuration..." -ForegroundColor Gray
-        sudo sc.exe config $ServiceName binPath= "$TargetExe --service --more-states"
+    try {
+        if (Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue) {
+            Remove-NetFirewallRule -DisplayName $RuleName -ErrorAction Stop
+        }
+        New-NetFirewallRule -DisplayName $RuleName -Direction Inbound -Program $TargetExe -Action Allow -LocalPort $Port -Protocol TCP -ErrorAction Stop
+    } catch {
+        Write-Host "Warning: Failed to ensure firewall rule: $($_.Exception.Message). Ensure you are running as administrator if this fails." -ForegroundColor Yellow
     }
+
 }
 
 if ($Start) {
     Write-Host "Starting MQTT Agent Service via sudo..." -ForegroundColor Cyan
     sudo sc.exe start $ServiceName
-    Start-Sleep -Seconds 5
-    $TargetExe = if (Test-Path $DeployPath) { $DeployPath } else { $ExePath }
-    Write-Host $TargetExe
-    $StartArgs = @("-tray", "-token", $Token)
-    if ($MoreStates) { $StartArgs += "-more-states" }
-    Start-Process $TargetExe -ArgumentList $StartArgs
+    if (-not $StartTray) {
+        Start-Sleep -Seconds 5
+        $TargetExe = if (Test-Path $DeployPath) { $DeployPath } else { $ExePath }
+        Write-Host $TargetExe
+        $StartArgs = @("-tray", "-token", $Token)
+        if ($MoreStates) { $StartArgs += "-more-states" }
+        Start-Process $TargetExe -ArgumentList $StartArgs
+    }
 }
 
 Write-Host "Done!" -ForegroundColor Green

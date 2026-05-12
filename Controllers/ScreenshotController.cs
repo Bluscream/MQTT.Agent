@@ -25,21 +25,46 @@ public class ScreenshotController : ControllerBase
     {
         try
         {
-            var result = await _screenshotService.CaptureScreenshot(desktop, quality, display, format);
-            if (result != null && result.StartsWith("data:"))
+            var bytes = await _screenshotService.CaptureScreenshot(desktop, quality, display, format);
+            if (bytes != null)
             {
-                var parts = result.Split(',');
-                var mimePart = parts[0];
-                var mimeType = mimePart.Contains("image/png") ? "image/png" : "image/jpeg";
-                var base64Data = parts[1];
-                var imageBytes = Convert.FromBase64String(base64Data);
-                return File(imageBytes, mimeType);
+                var mimeType = format.ToLower().Contains("png") ? "image/png" : "image/jpeg";
+                return File(bytes, mimeType);
             }
-            return BadRequest(new { error = result ?? "Unknown error" });
+            return BadRequest(new { error = "Screenshot capture failed." });
         }
         catch (Exception ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("stream")]
+    public async Task GetStream([FromQuery] string desktop = "Default", [FromQuery] int quality = 50, [FromQuery] string display = "all", [FromQuery] int fps = 2)
+    {
+        Response.ContentType = "multipart/x-mixed-replace; boundary=--frame";
+        var cancellationToken = HttpContext.RequestAborted;
+
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var bytes = await _screenshotService.CaptureScreenshot(desktop, quality, display, "jpg");
+                if (bytes != null)
+                {
+                    await Response.Body.WriteAsync(System.Text.Encoding.ASCII.GetBytes("\r\n--frame\r\n"), cancellationToken);
+                    await Response.Body.WriteAsync(System.Text.Encoding.ASCII.GetBytes($"Content-Type: image/jpeg\r\nContent-Length: {bytes.Length}\r\n\r\n"), cancellationToken);
+                    await Response.Body.WriteAsync(bytes, cancellationToken);
+                    await Response.Body.FlushAsync(cancellationToken);
+                }
+                
+                await Task.Delay(1000 / Math.Max(1, fps), cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ScreenshotController] Stream error: {ex.Message}");
         }
     }
 

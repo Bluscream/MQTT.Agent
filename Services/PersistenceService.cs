@@ -77,16 +77,21 @@ namespace MqttAgent.Services
 
             try
             {
+                // Build binPath including current operational flags
+                string binPath = $"\"{_exePath}\" {Global.Args.Service}";
+                if (Global.IsMoreStatesEnabled) binPath += $" {Global.Args.MoreStates}";
+                if (Global.IsStartTrayEnabled) binPath += $" {Global.Args.StartTray}";
+
                 if (!ServiceHelper.IsServiceInstalled(ServiceName))
                 {
-                    _logger.LogInformation("Service not found. Installing...");
-                    string binPath = $"\"{_exePath}\" {Global.Args.Service}";
+                    _logger.LogInformation("Service not found. Installing with binPath: {BinPath}", binPath);
                     ServiceHelper.InstallService(ServiceName, DisplayName, binPath);
                     _logger.LogInformation("Service installed successfully.");
                 }
                 else
                 {
-                    _logger.LogInformation("Service already installed.");
+                    _logger.LogInformation("Service already installed. Updating configuration natively...");
+                    ServiceHelper.UpdateServiceBinaryPath(ServiceName, binPath);
                 }
 
                 _logger.LogInformation("Ensuring service is started...");

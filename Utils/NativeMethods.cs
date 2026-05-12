@@ -27,6 +27,8 @@ public static class NativeMethods
     public const string SE_TCB_NAME = "SeTcbPrivilege";
     public const uint TOKEN_ADJUST_PRIVILEGES = 0x0020;
     public const uint TOKEN_QUERY = 0x0008;
+    public const uint TOKEN_DUPLICATE = 0x0002;
+    public const uint PROCESS_QUERY_INFORMATION = 0x0400;
 
     [DllImport("user32.dll")]
     public static extern bool SetProcessDPIAware();
@@ -160,6 +162,9 @@ public static class NativeMethods
 
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern uint WTSGetActiveConsoleSessionId();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
 
     // --------------------------------------------------------
     // User32 (user32.dll)

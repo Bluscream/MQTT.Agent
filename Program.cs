@@ -20,6 +20,10 @@ namespace MqttAgent;
 
 public static class Program
 {
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern bool AttachConsole(int dwProcessId);
+    private const int ATTACH_PARENT_PROCESS = -1;
+
     [STAThread]
     public static async Task Main(string[] args)
     {
@@ -28,6 +32,8 @@ public static class Program
             SessionHelper.Run(args);
             return;
         }
+
+        AttachConsole(ATTACH_PARENT_PROCESS);
 
         var baseDir = AppDomain.CurrentDomain.BaseDirectory;
         Directory.SetCurrentDirectory(baseDir);
@@ -116,6 +122,7 @@ public static class Program
         builder.Services.AddSingleton<ActionExecutorService>();
         builder.Services.AddSingleton<ActionCenterPollerService>();
         builder.Services.AddSingleton<CameraService>();
+        builder.Services.AddSingleton<TrayStarterService>();
 
         if (isService)
         {
@@ -196,6 +203,7 @@ public static class Program
         {
             builder.Services.AddHostedService(p => p.GetRequiredService<CameraService>());
         }
+        builder.Services.AddHostedService(p => p.GetRequiredService<TrayStarterService>());
         
         // Always run MQTT if we aren't JUST a helper
         builder.Services.AddHostedService(p => (MqttManager)p.GetRequiredService<IMqttManager>());
