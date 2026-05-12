@@ -30,11 +30,12 @@
     <PackageReference Include="Vortice.Mathematics" Version="2.1.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
   </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include=".references\ipc-mcp\.references\Modern-Windows-Message-Box-Generator\Source\CLI\Modern-Windows-Message-Box-Generator.CLI.csproj" />
     <ProjectReference Include=".references\ipc-mcp\.references\Modern-Windows-Message-Box-Generator\Source\Common\Modern-Windows-Message-Box-Generator.Common.csproj" />
     <ProjectReference Include=".references\ipc-mcp\.references\Modern-Windows-Message-Box-Generator\Source\UI\Modern-Windows-Message-Box-Generator.UI.csproj" />
+    <ProjectReference Include=".references\SoundSwitch.Banner\SoundSwitch.Banner.csproj" />
+    <ProjectReference Include=".references\SoundSwitch.Banner.CLI\SoundSwitch.Banner.CLI.csproj" />
   </ItemGroup>
 
   <ItemGroup>

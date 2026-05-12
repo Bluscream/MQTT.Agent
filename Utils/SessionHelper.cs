@@ -25,20 +25,40 @@ public static class SessionHelper
             NativeMethods.SetProcessDPIAware();
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
 
-            if (args.Contains("--messagebox") || args.Contains("--xsoverlay") || args.Contains("--ovrtoolkit"))
+            bool hasNotification = false;
+
+            var tasks = new List<Task>();
+
+            if (args.Contains("--messagebox") || args.Contains("--toast") || args.Contains("--xsoverlay") || args.Contains("--ovrtoolkit"))
             {
                 Log("Invoking Modern Message Box logic...");
-                // Pass all args to the integrated project
-                Modern_Windows_Message_Box_Generator.CLI.Program.Main(args);
-                return;
+                hasNotification = true;
+                tasks.Add(Task.Run(() => 
+                {
+                    try { Modern_Windows_Message_Box_Generator.CLI.Program.Main(args); }
+                    catch (Exception ex) { Log($"MessageBox Error: {ex.Message}"); }
+                }));
             }
 
             if (args.Contains("--banner"))
             {
-                var msgIdx = Array.IndexOf(args, "--message");
-                var message = (msgIdx >= 0 && msgIdx + 1 < args.Length) ? args[msgIdx + 1] : "";
-                Log($"Showing Banner: {message}");
-                ShowBanner(message);
+                Log("Invoking SoundSwitch Banner logic...");
+                hasNotification = true;
+                var bannerArgs = args.ToList();
+                if (!bannerArgs.Contains("show")) bannerArgs.Insert(0, "show");
+                
+                tasks.Add(Task.Run(() => 
+                {
+                    try { SoundSwitch.Banner.CLI.Program.Main(bannerArgs.ToArray()); }
+                    catch (Exception ex) { Log($"Banner Error: {ex.Message}"); }
+                }));
+            }
+
+            if (hasNotification)
+            {
+                // Wait for all notifications to complete, but with a total timeout just in case
+                Task.WaitAll(tasks.ToArray(), TimeSpan.FromMinutes(5));
+                Log("All notifications completed or timed out.");
                 return;
             }
 
@@ -60,38 +80,6 @@ public static class SessionHelper
         }
     }
 
-    private static void ShowBanner(string message)
-    {
-        using var form = new Form
-        {
-            FormBorderStyle = FormBorderStyle.None,
-            WindowState = FormWindowState.Maximized,
-            BackColor = Color.Black,
-            TopMost = true,
-            ShowInTaskbar = false,
-            StartPosition = FormStartPosition.CenterScreen
-        };
-
-        var label = new Label
-        {
-            Text = message,
-            ForeColor = Color.White,
-            Font = new Font("Segoe UI", 48, FontStyle.Bold),
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleCenter
-        };
-
-        form.Controls.Add(label);
-        form.Click += (s, e) => form.Close();
-        label.Click += (s, e) => form.Close();
-
-        // Close after 10 seconds
-        var timer = new System.Windows.Forms.Timer { Interval = 10000 };
-        timer.Tick += (s, e) => form.Close();
-        timer.Start();
-
-        Application.Run(form);
-    }
 
     private static void HandleScreenshot(string[] args, Action<string> Log)
     {

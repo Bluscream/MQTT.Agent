@@ -62,6 +62,12 @@ public class NotifyRequest
     [JsonPropertyName("ovrtoolkit")]
     public bool? UseOVRToolkit { get; set; }
 
+    [JsonPropertyName("banner_position")]
+    public string? BannerPosition { get; set; }
+
+    [JsonPropertyName("image")]
+    public string? Image { get; set; }
+
     [JsonPropertyName("data")]
     public NotificationData? Data { get; set; }
 }

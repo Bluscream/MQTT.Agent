@@ -64,7 +64,7 @@ public class SystemController : ControllerBase
                 await _mqtt.EnqueueAsync(topic, payload, false);
             }
 
-            if (useMessageBox || useXSOverlay || useOVRToolkit)
+            if (useMessageBox || useBanner || useXSOverlay || useOVRToolkit)
             {
                 var sessionId = _processService.GetActiveConsoleSessionId();
                 var argsList = new List<string> { "--title", $"\"{request.Title}\"", "--message", $"\"{request.Message}\"" };
@@ -80,18 +80,25 @@ public class SystemController : ControllerBase
                 if (!string.IsNullOrEmpty(request.Callback)) argsList.AddRange(new[] { "--callback", $"\"{request.Callback}\"" });
                 if (request.Flash) argsList.Add("--flash");
                 if (request.Ding) argsList.Add("--ding");
+                
+                // Add banner specific flags
+                if (useBanner) 
+                {
+                    argsList.Add("--banner");
+                    if (!string.IsNullOrEmpty(request.BannerPosition)) argsList.AddRange(new[] { "--pos", request.BannerPosition });
+                    // Duration for banner might map from timeout
+                    if (request.Timeout > 0) argsList.AddRange(new[] { "--duration", (request.Timeout / 1000).ToString() });
+                }
+
+                if (!string.IsNullOrEmpty(request.Image)) argsList.AddRange(new[] { "--image", $"\"{request.Image}\"" });
+                // Also support Image from Data
+                else if (request.Data?.Image != null) argsList.AddRange(new[] { "--image", $"\"{request.Data.Image}\"" });
+
                 if (useMessageBox) argsList.Add("--messagebox");
                 if (useXSOverlay) argsList.Add("--xsoverlay");
                 if (useOVRToolkit) argsList.Add("--ovrtoolkit");
 
                 var args = string.Join(" ", argsList);
-                await _processService.StartProcess(Process.GetCurrentProcess().MainModule?.FileName ?? "MqttAgent.exe", args, asUser: sessionId.ToString());
-            }
-
-            if (useBanner)
-            {
-                var sessionId = _processService.GetActiveConsoleSessionId();
-                var args = $"--banner --message \"{request.Message}\"";
                 await _processService.StartProcess(Process.GetCurrentProcess().MainModule?.FileName ?? "MqttAgent.exe", args, asUser: sessionId.ToString());
             }
 
