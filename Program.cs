@@ -133,8 +133,9 @@ public static class Program
         bool install = args.Contains("--install") || args.Contains("/install");
         bool uninstall = args.Contains("--uninstall") || args.Contains("/uninstall");
         bool moreStates = args.Contains("--more-states") || args.Contains("/more-states");
+        bool isAdmin = new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent()).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
 
-        if (install || uninstall || moreStates)
+        if ((install || uninstall || moreStates) && isAdmin)
         {
             // Create a temporary logger for setup tasks
             using var loggerFactory = LoggerFactory.Create(builder => builder.AddSerilog());
@@ -228,15 +229,22 @@ public static class Program
 
             Log.Information("Starting background services in tray-only mode...");
             
-            // Start hosted services manually, skipping the web host itself
-            var hostedServices = app.Services.GetServices<IHostedService>();
-            foreach (var service in hostedServices)
+            try
             {
-                if (service.GetType().FullName?.Contains("GenericWebHostService") == true) continue;
-                _ = service.StartAsync(CancellationToken.None);
-            }
+                // Start hosted services manually, skipping the web host itself
+                var hostedServices = app.Services.GetServices<IHostedService>();
+                foreach (var service in hostedServices)
+                {
+                    if (service.GetType().FullName?.Contains("GenericWebHostService") == true) continue;
+                    _ = service.StartAsync(CancellationToken.None);
+                }
 
-            Application.Run(new TrayApplicationContext(app.Services));
+                Application.Run(new TrayApplicationContext(app.Services));
+            }
+            catch (Exception ex)
+            {
+                Log.Fatal(ex, "Tray application crashed unexpectedly: {Message}", ex.Message);
+            }
         }
         else
         {

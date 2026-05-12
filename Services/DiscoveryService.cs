@@ -48,7 +48,7 @@ namespace MqttAgent.Services
                 command_topic = $"homeassistant/select/{deviceIdentifier}/set",
                 json_attributes_topic = $"homeassistant/select/{deviceIdentifier}/attributes",
                 options = new[] { 
-                    "On", "Locked", "Logged out", "Updating", "Safe Mode", "Idle", "Shutting Down", "Logging In", "Logging Out"
+                    "On", "Locked", "Logged out", "Updating", "Safe Mode", "Idle", "Shutting Down", "Logging In", "Logging Out", "Needs Attention"
                 },
                 device = deviceInfo
             };

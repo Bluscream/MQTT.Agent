@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace MqttAgent.Utils
 {
@@ -160,6 +161,48 @@ namespace MqttAgent.Utils
             }
 
             return users;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetWindowThreadProcessId(IntPtr hWnd, out uint ProcessId);
+
+        public static bool IsNeedsAttention()
+        {
+            bool needsAttention = false;
+            try
+            {
+                EnumWindows((hWnd, lParam) =>
+                {
+                    if (IsWindowVisible(hWnd))
+                    {
+                        StringBuilder sb = new StringBuilder(256);
+                        GetClassName(hWnd, sb, sb.Capacity);
+                        if (sb.ToString() == "#32770")
+                        {
+                            needsAttention = true;
+                            return false; // Stop enumerating
+                        }
+                    }
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch
+            {
+                // Ignore
+            }
+            return needsAttention;
         }
     }
 }

@@ -13,6 +13,7 @@ using MqttAgent.Utils;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using LibreHardwareMonitor.Hardware;
+using System.Net.Http;
 
 namespace MqttAgent.Services
 {
@@ -34,8 +35,16 @@ namespace MqttAgent.Services
         
         // LibreHardwareMonitor
         private readonly Computer _computer;
-        private const int IdleThresholdSeconds = 900;
-        private const float UsageThreshold = 50.0f;
+        private const int IdleThresholdSeconds = 1800; // 30 minutes
+        private const float IdleUsageThreshold = 25.0f;
+        private const float ActiveUsageThreshold = 50.0f;
+        private const int ActiveThresholdSeconds = 120; // 2 minutes
+        private const int NeedsAttentionClearThresholdSeconds = 10;
+        private DateTime _activeStartTime = DateTime.MaxValue;
+        private bool _isCurrentlyIdle = false;
+        private DateTime _needsAttentionClearTime = DateTime.MaxValue;
+        private bool _isCurrentlyNeedsAttention = false;
+        private static readonly HttpClient _httpClient = new HttpClient();
 
         public SystemMonitorService(IMqttManager mqtt, IDiscoveryService discovery, ILogger<SystemMonitorService> logger)
         {
@@ -129,6 +138,7 @@ namespace MqttAgent.Services
             {
                 ["event"] = eventDescription,
                 ["event_type"] = eventType,
+                ["machine_name"] = Environment.MachineName,
                 ["timestamp"] = DateTime.UtcNow.ToString("O")
             };
 
@@ -141,7 +151,34 @@ namespace MqttAgent.Services
                 }
             }
 
-            await _mqtt.EnqueueAsync($"homeassistant/sensor/{_mqtt.UniqueId}_event/state", JsonSerializer.Serialize(payload), false);
+            bool httpSuccess = false;
+            var hassServer = Environment.GetEnvironmentVariable("HASS_SERVER");
+            var hassToken = Environment.GetEnvironmentVariable("HASS_TOKEN");
+            
+            if (!string.IsNullOrEmpty(hassServer) && !string.IsNullOrEmpty(hassToken))
+            {
+                try
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Post, $"{hassServer.TrimEnd('/')}/api/events/pc");
+                    request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", hassToken);
+                    var payloadStr = JsonSerializer.Serialize(payload);
+                    request.Content = new StringContent(payloadStr, System.Text.Encoding.UTF8, "application/json");
+                    var response = await _httpClient.SendAsync(request);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        httpSuccess = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Failed to post event to HASS API: {Message}", ex.Message);
+                }
+            }
+
+            if (!httpSuccess)
+            {
+                await _mqtt.EnqueueAsync($"homeassistant/sensor/{_mqtt.UniqueId}_event/state", JsonSerializer.Serialize(payload), false);
+            }
         }
 
         private void SetupHardwareCounters() { } // Deprecated
@@ -220,6 +257,7 @@ namespace MqttAgent.Services
         private async Task UpdateState()
         {
             string state = "On";
+            bool moreStates = Environment.CommandLine.Contains("--more-states") || Environment.CommandLine.Contains("/more-states");
 
             if (SystemHelper.IsSafeMode())
             {
@@ -249,7 +287,11 @@ namespace MqttAgent.Services
             {
                 state = "Logged out";
             }
-            else if (CheckIdle())
+            else if (moreStates && CheckNeedsAttention())
+            {
+                state = "Needs attention";
+            }
+            else if (moreStates && CheckIdle())
             {
                 state = "Idle";
             }
@@ -276,6 +318,26 @@ namespace MqttAgent.Services
             await ReportAttributes();
         }
 
+        private bool CheckNeedsAttention()
+        {
+            bool currentlyNeedsAttention = SystemHelper.IsNeedsAttention();
+            if (currentlyNeedsAttention)
+            {
+                _isCurrentlyNeedsAttention = true;
+                _needsAttentionClearTime = DateTime.MaxValue;
+            }
+            else if (_isCurrentlyNeedsAttention)
+            {
+                if (_needsAttentionClearTime == DateTime.MaxValue) _needsAttentionClearTime = DateTime.Now;
+                if ((DateTime.Now - _needsAttentionClearTime).TotalSeconds >= NeedsAttentionClearThresholdSeconds)
+                {
+                    _isCurrentlyNeedsAttention = false;
+                    _needsAttentionClearTime = DateTime.MaxValue;
+                }
+            }
+            return _isCurrentlyNeedsAttention;
+        }
+
         private bool CheckIdle()
         {
             try
@@ -298,19 +360,40 @@ namespace MqttAgent.Services
                     }
                 }
 
-                if (cpuUsage < UsageThreshold && gpuUsage < UsageThreshold)
+                if (_isCurrentlyIdle)
                 {
-                    if (_idleStartTime == DateTime.MaxValue)
-                        _idleStartTime = DateTime.Now;
-                    
-                    var idleDuration = (DateTime.Now - _idleStartTime).TotalSeconds;
-                    return idleDuration >= IdleThresholdSeconds;
+                    if (cpuUsage >= ActiveUsageThreshold || gpuUsage >= ActiveUsageThreshold)
+                    {
+                        if (_activeStartTime == DateTime.MaxValue) _activeStartTime = DateTime.Now;
+                        if ((DateTime.Now - _activeStartTime).TotalSeconds >= ActiveThresholdSeconds)
+                        {
+                            _isCurrentlyIdle = false;
+                            _idleStartTime = DateTime.MaxValue;
+                        }
+                    }
+                    else
+                    {
+                        _activeStartTime = DateTime.MaxValue;
+                    }
                 }
                 else
                 {
-                    _idleStartTime = DateTime.MaxValue;
-                    return false;
+                    if (cpuUsage < IdleUsageThreshold && gpuUsage < IdleUsageThreshold)
+                    {
+                        if (_idleStartTime == DateTime.MaxValue) _idleStartTime = DateTime.Now;
+                        if ((DateTime.Now - _idleStartTime).TotalSeconds >= IdleThresholdSeconds)
+                        {
+                            _isCurrentlyIdle = true;
+                            _activeStartTime = DateTime.MaxValue;
+                        }
+                    }
+                    else
+                    {
+                        _idleStartTime = DateTime.MaxValue;
+                    }
                 }
+
+                return _isCurrentlyIdle;
             }
             catch
             {

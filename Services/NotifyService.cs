@@ -105,17 +105,25 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
         uint sessionId = WTSGetActiveConsoleSessionId();
         if (sessionId == 0xFFFFFFFF) throw new Exception("No active console session found");
 
-        var args = $"--title \"{title}\" --message \"{message}\" --type \"{type}\" --icon \"{icon}\" --timeout {timeoutMs}";
+        var args = $"--messagebox --title \"{title}\" --message \"{message}\" --type \"{type}\" --icon \"{icon}\" --timeout {timeoutMs}";
+        var helperPath = Process.GetCurrentProcess().MainModule?.FileName;
         
         try
         {
-            await _processService.StartProcess("msgbox.exe", args, asUser: sessionId.ToString());
+            if (!string.IsNullOrEmpty(helperPath))
+            {
+                await _processService.StartProcess(helperPath, args, asUser: sessionId.ToString(), windowStyle: "hidden");
+            }
+            else
+            {
+                throw new Exception("Helper path not found");
+            }
         }
         catch (Exception ex)
         {
-            // Final fallback: Use WTSSendMessage directly if msgbox.exe is not in PATH or fails
+            // Final fallback: Use WTSSendMessage directly if helper fails
             ShowWtsMessageBox(sessionId, title, message, type, icon, timeoutMs);
-            throw new Exception($"msgbox.exe failed: {ex.Message}. Fallback to WTSSendMessage used.");
+            throw new Exception($"helper app failed: {ex.Message}. Fallback to WTSSendMessage used.");
         }
     }
 

@@ -220,15 +220,21 @@ public class ProcessService
         return WTSGetActiveConsoleSessionId();
     }
 
-    private Process CreateProcessInternal(IntPtr? token, string command, string arguments, out int processId, string desktop = "winsta0\\default")
+    private Process CreateProcessInternal(IntPtr? token, string command, string arguments, out int processId, string desktop = "winsta0\\default", ProcessWindowStyle windowStyle = ProcessWindowStyle.Normal)
     {
+        short showWindow = 1; // SW_SHOWNORMAL
+        if (windowStyle == ProcessWindowStyle.Hidden) showWindow = 0; // SW_HIDE
+        else if (windowStyle == ProcessWindowStyle.Minimized) showWindow = 2; // SW_SHOWMINIMIZED
+        else if (windowStyle == ProcessWindowStyle.Maximized) showWindow = 3; // SW_SHOWMAXIMIZED
+
         var startupInfo = new STARTUPINFO
         {
             cb = Marshal.SizeOf(typeof(STARTUPINFO)),
             lpReserved = "",
             lpDesktop = desktop,
             lpTitle = "",
-            dwFlags = 0,
+            dwFlags = 0x00000001, // STARTF_USESHOWWINDOW
+            wShowWindow = showWindow,
             cbReserved2 = 0,
             lpReserved2 = IntPtr.Zero,
             hStdInput = IntPtr.Zero,
@@ -324,7 +330,8 @@ public class ProcessService
 
                     // Create process as user - store process ID separately
                     var desktopStr = desktop ?? "winsta0\\default";
-                    process = CreateProcessInternal(primaryToken, executable, arguments ?? "", out int processId, desktopStr);
+                    var parsedWindowStyle = ParseWindowStyle(windowStyle);
+                    process = CreateProcessInternal(primaryToken, executable, arguments ?? "", out int processId, desktopStr, parsedWindowStyle);
                     createdProcessId = processId;
                 }
                 else if (elevated)
@@ -359,7 +366,8 @@ public class ProcessService
                 else if (!string.IsNullOrEmpty(desktop))
                 {
                     // For running on a specific desktop without impersonation (e.g. SYSTEM on Winlogon)
-                    process = CreateProcessInternal(null, executable, arguments ?? "", out int processId, desktop);
+                    var parsedWindowStyle = ParseWindowStyle(windowStyle);
+                    process = CreateProcessInternal(null, executable, arguments ?? "", out int processId, desktop, parsedWindowStyle);
                     createdProcessId = processId;
                 }
                 else

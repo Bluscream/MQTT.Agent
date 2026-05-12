@@ -28,10 +28,39 @@ public static class SessionHelper
             {
                 var titleIdx = Array.IndexOf(args, "--title");
                 var msgIdx = Array.IndexOf(args, "--message");
+                var typeIdx = Array.IndexOf(args, "--type");
+                var iconIdx = Array.IndexOf(args, "--icon");
+                var timeoutIdx = Array.IndexOf(args, "--timeout");
+
                 var title = (titleIdx >= 0 && titleIdx + 1 < args.Length) ? args[titleIdx + 1] : "Notification";
                 var message = (msgIdx >= 0 && msgIdx + 1 < args.Length) ? args[msgIdx + 1] : "";
-                Log($"Showing MessageBox: {title} - {message}");
-                MessageBox.Show(message, title, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                var typeStr = (typeIdx >= 0 && typeIdx + 1 < args.Length) ? args[typeIdx + 1] : "MB_OK";
+                var iconStr = (iconIdx >= 0 && iconIdx + 1 < args.Length) ? args[iconIdx + 1] : "MB_ICONINFORMATION";
+                int timeoutMs = 0;
+                if (timeoutIdx >= 0 && timeoutIdx + 1 < args.Length) int.TryParse(args[timeoutIdx + 1], out timeoutMs);
+
+                MessageBoxButtons buttons = MessageBoxButtons.OK;
+                if (typeStr.Contains("OKCANCEL", StringComparison.OrdinalIgnoreCase)) buttons = MessageBoxButtons.OKCancel;
+                else if (typeStr.Contains("ABORTRETRYIGNORE", StringComparison.OrdinalIgnoreCase)) buttons = MessageBoxButtons.AbortRetryIgnore;
+                else if (typeStr.Contains("YESNOCANCEL", StringComparison.OrdinalIgnoreCase)) buttons = MessageBoxButtons.YesNoCancel;
+                else if (typeStr.Contains("YESNO", StringComparison.OrdinalIgnoreCase)) buttons = MessageBoxButtons.YesNo;
+                else if (typeStr.Contains("RETRYCANCEL", StringComparison.OrdinalIgnoreCase)) buttons = MessageBoxButtons.RetryCancel;
+
+                MessageBoxIcon mIcon = MessageBoxIcon.Information;
+                if (iconStr.Contains("ERROR", StringComparison.OrdinalIgnoreCase) || iconStr.Contains("HAND", StringComparison.OrdinalIgnoreCase) || iconStr.Contains("STOP", StringComparison.OrdinalIgnoreCase)) mIcon = MessageBoxIcon.Error;
+                else if (iconStr.Contains("QUESTION", StringComparison.OrdinalIgnoreCase)) mIcon = MessageBoxIcon.Question;
+                else if (iconStr.Contains("WARNING", StringComparison.OrdinalIgnoreCase) || iconStr.Contains("EXCLAMATION", StringComparison.OrdinalIgnoreCase)) mIcon = MessageBoxIcon.Warning;
+
+                Log($"Showing MessageBox: {title} - {message} (Buttons: {buttons}, Icon: {mIcon}, Timeout: {timeoutMs})");
+
+                if (timeoutMs > 0)
+                {
+                    var timer = new System.Windows.Forms.Timer { Interval = timeoutMs };
+                    timer.Tick += (s, e) => { timer.Stop(); SendKeys.SendWait("{ESC}"); };
+                    timer.Start();
+                }
+
+                MessageBox.Show(message, title, buttons, mIcon);
                 return;
             }
 
