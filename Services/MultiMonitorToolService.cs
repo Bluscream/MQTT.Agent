@@ -100,16 +100,27 @@ public class MultiMonitorToolService
         }
     }
 
+    private string? _monitorsCache;
+    private DateTime _lastCacheUpdate = DateTime.MinValue;
+    private readonly TimeSpan _cacheDuration = TimeSpan.FromSeconds(60);
+
     public async Task<string> GetMonitorsAsync(string format, string? delimiter = null, string? layout = null)
     {
+        var actualFormat = format.ToLower();
+        var useJson = actualFormat == "json";
+
+        // Simple cache for JSON requests (most common during streaming/discovery)
+        if (useJson && DateTime.Now - _lastCacheUpdate < _cacheDuration && _monitorsCache != null)
+        {
+            return _monitorsCache;
+        }
+
         // Use a shared temp directory accessible to both SYSTEM and interactive User
         var baseDir = AppDomain.CurrentDomain.BaseDirectory;
         var tempDir = Path.Combine(baseDir, "temp");
         if (!Directory.Exists(tempDir)) Directory.CreateDirectory(tempDir);
         
         var tempFile = Path.Combine(tempDir, $"monitors_{Guid.NewGuid()}.tmp");
-        var actualFormat = format.ToLower();
-        var useJson = actualFormat == "json";
         
         // If JSON, we use XML as the base to parse
         var toolFormat = useJson ? "xml" : actualFormat;
@@ -140,7 +151,7 @@ public class MultiMonitorToolService
             }
 
             var content = await File.ReadAllTextAsync(tempFile);
-            File.Delete(tempFile);
+            try { File.Delete(tempFile); } catch { }
 
             if (useJson)
             {
@@ -164,10 +175,12 @@ public class MultiMonitorToolService
                             dict["friendly_name"] = dict.GetFriendlyMonitorName();
                             return dict;
                         });
-                        return JsonSerializer.Serialize(mapped, new JsonSerializerOptions { WriteIndented = true });
+                        json = JsonSerializer.Serialize(mapped, new JsonSerializerOptions { WriteIndented = true });
                     }
-                    return pnpJson;
                 }
+                
+                _monitorsCache = json;
+                _lastCacheUpdate = DateTime.Now;
                 return json;
             }
 
@@ -269,34 +282,74 @@ public class MultiMonitorToolService
     
     public async Task<string> ResolveMonitorName(string identifier)
     {
-        if (identifier.Equals("all", StringComparison.OrdinalIgnoreCase)) return "all";
-        if (int.TryParse(identifier, out _)) return identifier;
+        if (string.IsNullOrWhiteSpace(identifier) || identifier.Equals("all", StringComparison.OrdinalIgnoreCase)) return "all";
+        
+        // Fast path: if it already looks like a device name, return it
+        if (identifier.StartsWith("\\\\.\\DISPLAY", StringComparison.OrdinalIgnoreCase)) return identifier;
 
         var screensJson = await GetMonitorsAsync("json");
-        if (!string.IsNullOrEmpty(screensJson))
+        if (string.IsNullOrEmpty(screensJson)) return identifier;
+
+        try
         {
-            try
+            var screens = JsonSerializer.Deserialize<List<Dictionary<string, string>>>(screensJson);
+            if (screens == null || screens.Count == 0) return identifier;
+
+            // 1. Try index match (1-based or 0-based)
+            if (int.TryParse(identifier, out int idx))
             {
-                var screens = JsonSerializer.Deserialize<List<Dictionary<string, string>>>(screensJson);
-                if (screens != null)
+                // We prefer 1-based for users but support 0-based
+                if (idx >= 0 && idx < screens.Count) 
+                    return screens[idx].GetValueOrDefault("name") ?? identifier;
+                if (idx > 0 && idx <= screens.Count)
+                    return screens[idx - 1].GetValueOrDefault("name") ?? identifier;
+            }
+
+            // 2. Try Exact Match (DeviceName, FriendlyName, ShortID, Serial, PCI ID/MonitorID, MonitorString, DeviceID)
+            foreach (var s in screens)
+            {
+                var name = s.GetValueOrDefault("name") ?? "";
+                var friendly = s.GetValueOrDefault("friendly_name") ?? "";
+                var shortId = s.GetValueOrDefault("short_monitor_id") ?? s.GetValueOrDefault("Short Monitor ID") ?? "";
+                var serial = s.GetValueOrDefault("monitor_serial_number") ?? s.GetValueOrDefault("Monitor Serial Number") ?? "";
+                var monitorId = s.GetValueOrDefault("monitor_id") ?? s.GetValueOrDefault("Monitor ID") ?? "";
+                var monitorString = s.GetValueOrDefault("monitor_string") ?? s.GetValueOrDefault("Monitor String") ?? "";
+                var deviceId = s.GetValueOrDefault("device_id") ?? s.GetValueOrDefault("Device ID") ?? "";
+
+                if (string.Equals(name, identifier, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(friendly, identifier, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(shortId, identifier, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(serial, identifier, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(monitorId, identifier, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(monitorString, identifier, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(deviceId, identifier, StringComparison.OrdinalIgnoreCase))
                 {
-                    foreach (var s in screens)
-                    {
-                        var name = s.GetValueOrDefault("name") ?? "";
-                        var friendly = s.GetValueOrDefault("friendly_name") ?? "";
-                        var shortId = s.GetValueOrDefault("short_monitor_id") ?? "";
-                        
-                        if (string.Equals(friendly, identifier, StringComparison.OrdinalIgnoreCase) || 
-                            string.Equals(shortId, identifier, StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(name, identifier, StringComparison.OrdinalIgnoreCase))
-                        {
-                            return name;
-                        }
-                    }
+                    return name;
                 }
             }
-            catch { }
+
+            // 3. Try Partial Match (Friendly Name, PCI ID/MonitorID, MonitorString, DeviceID)
+            foreach (var s in screens)
+            {
+                var friendly = s.GetValueOrDefault("friendly_name") ?? "";
+                var monitorId = s.GetValueOrDefault("monitor_id") ?? s.GetValueOrDefault("Monitor ID") ?? "";
+                var monitorString = s.GetValueOrDefault("monitor_string") ?? s.GetValueOrDefault("Monitor String") ?? "";
+                var deviceId = s.GetValueOrDefault("device_id") ?? s.GetValueOrDefault("Device ID") ?? "";
+
+                if (friendly.Contains(identifier, StringComparison.OrdinalIgnoreCase) ||
+                    monitorId.Contains(identifier, StringComparison.OrdinalIgnoreCase) ||
+                    monitorString.Contains(identifier, StringComparison.OrdinalIgnoreCase) ||
+                    deviceId.Contains(identifier, StringComparison.OrdinalIgnoreCase))
+                {
+                    return s.GetValueOrDefault("name") ?? identifier;
+                }
+            }
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MultiMonitorToolService] Error resolving monitor name: {ex.Message}");
+        }
+
         return identifier;
     }
 

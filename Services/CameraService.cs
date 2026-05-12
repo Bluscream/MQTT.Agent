@@ -15,6 +15,8 @@ public class CameraService : BackgroundService
     private readonly IMqttManager _mqtt;
     private readonly ScreenshotService _screenshotService;
     private readonly TokenService _tokenService;
+    private readonly ILogger<CameraService> _logger;
+    private readonly string _uniqueId;
     private readonly string _port;
     private readonly string _topic;
 
@@ -88,7 +90,7 @@ public class CameraService : BackgroundService
         string topic = $"homeassistant/camera/{_uniqueId}_{suffix}/image";
         string discoveryTopic = $"homeassistant/camera/{_uniqueId}_{suffix}/config";
 
-        string mjpegUrl = $"http://{Environment.MachineName.ToLowerInvariant()}:{_port}/api/screenshot/stream?display={Uri.EscapeDataString(display)}&token={_tokenService.Token}";
+        string mjpegUrl = $"http://{Environment.MachineName.ToLowerInvariant()}:{_port}/api/capture/stream?display={Uri.EscapeDataString(display)}&fps=10&quality=50&format=mjpeg&token={_tokenService.Token}";
 
         // Register/Update Discovery
         var config = new

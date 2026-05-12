@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Text.Json;
+using MqttAgent.Utils.Capture;
 
 namespace MqttAgent.Services
 {
@@ -18,6 +19,7 @@ namespace MqttAgent.Services
     {
         private readonly ProcessService _processService;
         private readonly MultiMonitorToolService _monitorService;
+        private readonly Dictionary<string, ICaptureBackend> _backends = new();
 
         public ScreenshotService(ProcessService processService, MultiMonitorToolService monitorService)
         {
@@ -52,7 +54,7 @@ namespace MqttAgent.Services
                 {
                     string args = $"--screenshot-helper --quality {quality} --display {resolvedDisplay}";
                     if (usePng) args += " --png";
- 
+  
                     // Method 1: Helper as Active User (Best for 'Default' desktop to bypass DRM/UAC)
                     if (sessionId > 0 && targetDesktop.Equals("Default", StringComparison.OrdinalIgnoreCase))
                     {
@@ -79,7 +81,7 @@ namespace MqttAgent.Services
                         }
                         catch (Exception ex) { errors.Add($"User Helper Exception: {ex.Message}"); }
                     }
- 
+  
                     // Method 2: Helper as SYSTEM (Best for 'Winlogon' or when no user is logged in)
                     try
                     {
@@ -108,90 +110,41 @@ namespace MqttAgent.Services
                 {
                     errors.Add("Helper executable path not found.");
                 }
- 
+  
                 // Method 3: Direct Capture from Service Process
                 try
                 {
                     Console.WriteLine($"[ScreenshotService] Trying Direct Capture on {desktopStr} (Display: {resolvedDisplay})");
-                    var allScreens = System.Windows.Forms.Screen.AllScreens;
-                    System.Windows.Forms.Screen[] targets;
- 
-                    if (resolvedDisplay.Equals("all", StringComparison.OrdinalIgnoreCase))
+                    
+                    if (usePng || resolvedDisplay.Equals("all", StringComparison.OrdinalIgnoreCase))
                     {
-                        targets = allScreens;
-                    }
-                    else if (int.TryParse(resolvedDisplay, out int idx) && idx >= 0 && idx < allScreens.Length)
-                    {
-                        targets = [allScreens[idx]];
+                        // Fallback to legacy GDI for PNG or "all" screens
+                        using var gdi = new GdiCaptureBackend();
+                        gdi.Initialize(resolvedDisplay);
+                        var bytes = await gdi.CaptureFrame(quality);
+                        if (bytes != null) return bytes;
                     }
                     else
                     {
-                        var byName = allScreens.Where(s => 
-                            string.Equals(s.DeviceName, resolvedDisplay, StringComparison.OrdinalIgnoreCase) ||
-                            resolvedDisplay.Contains(s.DeviceName.Replace("\\\\.\\", ""), StringComparison.OrdinalIgnoreCase)
-                        ).ToArray();
- 
-                        if (byName.Length > 0)
-                            targets = byName;
-                        else
-                            targets = [System.Windows.Forms.Screen.PrimaryScreen ?? allScreens[0]];
-                    }
-
-                    if (targets.Length > 0)
-                    {
-                        int minX = targets.Min(s => s.Bounds.X);
-                        int minY = targets.Min(s => s.Bounds.Y);
-                        int maxX = targets.Max(s => s.Bounds.Right);
-                        int maxY = targets.Max(s => s.Bounds.Bottom);
-                        int width = maxX - minX;
-                        int height = maxY - minY;
-
-                        using (Bitmap bitmap = new Bitmap(width, height, usePng ? PixelFormat.Format32bppArgb : PixelFormat.Format24bppRgb))
+                        // Try DXGI then GDI
+                        ICaptureBackend backend;
+                        if (!_backends.TryGetValue(resolvedDisplay, out backend!) || backend is GdiCaptureBackend)
                         {
-                            using (Graphics g = Graphics.FromImage(bitmap))
-                            {
-                                if (usePng) g.Clear(Color.FromArgb(0, 0, 0, 0));
-                                foreach (var screen in targets)
-                                {
-                                    g.CopyFromScreen(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.X - minX, screen.Bounds.Y - minY, screen.Bounds.Size);
-                                }
-                            }
-
-                            using (MemoryStream ms = new MemoryStream())
-                            {
-                                if (usePng)
-                                {
-                                    bitmap.Save(ms, ImageFormat.Png);
-                                }
-                                else
-                                {
-                                    ImageCodecInfo? codec = ImageCodecInfo.GetImageEncoders().FirstOrDefault(c => c.MimeType == "image/jpeg");
-                                    if (codec != null)
-                                    {
-                                        EncoderParameters encoderParams = new EncoderParameters(1);
-                                        encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, (long)quality);
-                                        bitmap.Save(ms, codec, encoderParams);
-                                    }
-                                    else
-                                    {
-                                        bitmap.Save(ms, ImageFormat.Jpeg);
-                                    }
-                                }
-
-                                byte[] bytes = ms.ToArray();
-                                if (bytes.Length > 100)
-                                {
-                                    Console.WriteLine($"[ScreenshotService] SUCCESS (Direct): {bytes.Length} bytes");
-                                    return bytes;
-                                }
-                                else
-                                    errors.Add($"Direct capture on {desktopStr} resulted in empty image.");
-                            }
+                            backend = new DxgiCaptureBackend();
+                            backend.Initialize(resolvedDisplay);
+                            _backends[resolvedDisplay] = backend;
                         }
-                    }
-                    else
-                    {
-                        errors.Add($"Direct capture on {desktopStr} failed: No target screens found.");
+
+                        var bytes = await backend.CaptureFrame(quality);
+                        if (bytes == null)
+                        {
+                            // Fallback to GDI for this display
+                            backend = new GdiCaptureBackend();
+                            backend.Initialize(resolvedDisplay);
+                            _backends[resolvedDisplay] = backend;
+                            bytes = await backend.CaptureFrame(quality);
+                        }
+                        return bytes;
                     }
                 }
                 catch (Exception ex)
@@ -236,7 +189,6 @@ namespace MqttAgent.Services
         {
             try
             {
-                // 1. Use MultiMonitorToolService as the primary source
                 var json = await _monitorService.GetMonitorsAsync("json");
                 if (!string.IsNullOrEmpty(json) && json.Trim() != "[]")
                 {
@@ -246,17 +198,10 @@ namespace MqttAgent.Services
                         var result = new List<object>();
                         foreach (var mmt in mmtMonitors)
                         {
-                            // Map MMT fields to our expected format
-                            // MMT: "Short Monitor ID", "Name", "Primary", "Resolution", "Left-Top"
-                            // Resolution sample: "3440 X 1440"
-                            // Left-Top sample: "0, 0"
-                            
                             var res = mmt.GetValueOrDefault("resolution") ?? mmt.GetValueOrDefault("Resolution");
                             res.TryParseResolution(out int width, out int height);
- 
                             var pos = mmt.GetValueOrDefault("left-top") ?? mmt.GetValueOrDefault("Left-Top");
                             pos.TryParsePosition(out int x, out int y);
- 
                             result.Add(new
                             {
                                 index = result.Count,
@@ -270,7 +215,6 @@ namespace MqttAgent.Services
                     }
                 }
 
-                // 2. Fallback: Local EnumDisplayMonitors (likely Session 0 limited)
                 Console.WriteLine("[ScreenshotService] ListScreens: MultiMonitorToolService returned nothing. Falling back to local Win32.");
                 var screens = new List<object>();
                 NativeMethods.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref NativeMethods.Rect lprcMonitor, IntPtr dwData) =>
@@ -317,6 +261,56 @@ namespace MqttAgent.Services
             }
             catch { }
             return desktops;
+        }
+
+        public async Task StartStreamingProcess(string display, int quality, int fps, Stream outputStream, System.Threading.CancellationToken ct)
+        {
+            string resolvedDisplay = await _monitorService.ResolveMonitorName(display);
+            var exePath = Process.GetCurrentProcess().MainModule?.FileName ?? "MqttAgent.exe";
+            var token = Config.Get("token", "-token", "MQTTAGENT_TOKEN");
+
+            var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            listener.Start();
+            int port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+
+            var args = $"--stream-helper --display \"{resolvedDisplay}\" --quality {quality} --fps {fps} --port {port} -token {token}";
+            Console.WriteLine($"[ScreenshotService] Starting Stream Helper on port {port}: {args}");
+
+            Process? process = null;
+            try
+            {
+                if (Global.IsServiceMode)
+                {
+                    uint sessionId = _processService.GetActiveConsoleSessionId();
+                    process = await _processService.StartProcessForStreaming(exePath, args, sessionId.ToString());
+                }
+                else
+                {
+                    process = await _processService.StartProcessForStreaming(exePath, args);
+                }
+
+                var acceptTask = listener.AcceptTcpClientAsync(ct);
+                var completedTask = await Task.WhenAny(acceptTask.AsTask(), Task.Delay(5000, ct));
+
+                if (completedTask != acceptTask.AsTask())
+                {
+                    throw new TimeoutException("Stream helper failed to connect back within 5s.");
+                }
+
+                using var client = await acceptTask;
+                using var networkStream = client.GetStream();
+                await networkStream.CopyToAsync(outputStream, ct);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ScreenshotService] Streaming error: {ex.Message}");
+            }
+            finally
+            {
+                listener.Stop();
+                if (process != null && !process.HasExited) try { process.Kill(true); } catch { }
+                process?.Dispose();
+            }
         }
     }
 }

@@ -8,7 +8,7 @@ using System.Text.Json;
 namespace MqttAgent.Controllers;
 
 [ApiController]
-[Route("api/device")]
+[Route("api")]
 [Authorize]
 public class DeviceController : ControllerBase
 {
@@ -19,14 +19,14 @@ public class DeviceController : ControllerBase
         _deviceService = deviceService;
     }
 
-    [HttpGet("list")]
+    [HttpGet("device-list")]
     public IActionResult ListDevices([FromQuery] string[]? categories)
     {
         var result = _deviceService.ListDevices(categories);
         return Ok(result);
     }
 
-    [AcceptVerbs("GET", "POST"), Route("enable")]
+    [AcceptVerbs("GET", "POST"), Route("device-enable")]
     public async Task<IActionResult> EnableDevices([FromQuery] string? pattern)
     {
         var finalPattern = await GetPattern(pattern);
@@ -35,7 +35,7 @@ public class DeviceController : ControllerBase
         return Ok(result);
     }
 
-    [AcceptVerbs("GET", "POST"), Route("disable")]
+    [AcceptVerbs("GET", "POST"), Route("device-disable")]
     public async Task<IActionResult> DisableDevices([FromQuery] string? pattern)
     {
         var finalPattern = await GetPattern(pattern);
@@ -44,7 +44,7 @@ public class DeviceController : ControllerBase
         return Ok(result);
     }
 
-    [AcceptVerbs("GET", "POST"), Route("restart")]
+    [AcceptVerbs("GET", "POST"), Route("device-restart")]
     public async Task<IActionResult> RestartDevices([FromQuery] string? pattern)
     {
         var finalPattern = await GetPattern(pattern);

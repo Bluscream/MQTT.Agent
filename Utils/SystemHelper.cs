@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Management;
+using System.Diagnostics;
+using System.Linq;
 using MqttAgent.Models;
 
 namespace MqttAgent.Utils
@@ -91,7 +93,6 @@ namespace MqttAgent.Utils
 
         public static bool IsLocked()
         {
-            // Simplified check: if console session is disconnected, it's usually locked
             IntPtr serverHandle = IntPtr.Zero;
             IntPtr sessionInfoPtr = IntPtr.Zero;
             int sessionCount = 0;
@@ -157,35 +158,58 @@ namespace MqttAgent.Utils
                     WTSFreeMemory(sessionInfoPtr);
                 }
             }
-            catch
-            {
-                // Ignore exceptions
-            }
-
+            catch { }
             return users;
         }
-
-
 
         public static HashSet<IntPtr> FlashingWindows { get; } = new HashSet<IntPtr>();
         
         public static MqttAgent.Models.NeedsAttentionInfo? GetNeedsAttentionInfo()
         {
+            // 0. Check for Secure Desktop (UAC / Login Screen)
+            string desktop = GetActiveDesktopName();
+            if (desktop == "Winlogon")
+            {
+                return new NeedsAttentionInfo
+                {
+                    ProcessName = "csrss",
+                    WindowName = "Secure Desktop (UAC/Login)",
+                    ClassName = "Winlogon",
+                    CommandLine = "Input Desktop: Winlogon"
+                };
+            }
+
+            // 1. Check for known security/UAC processes first
+            var securityProcesses = new[] { "consent", "CredentialUIBroker" };
+            foreach (var pName in securityProcesses)
+            {
+                try
+                {
+                    var processes = Process.GetProcessesByName(pName);
+                    if (processes.Length > 0)
+                    {
+                        var p = processes[0];
+                        return new NeedsAttentionInfo
+                        {
+                            ProcessName = p.ProcessName,
+                            ProcessId = p.Id,
+                            WindowName = pName == "consent" ? "User Account Control" : "Windows Security",
+                            ClassName = "SecurityPrompt",
+                            CommandLine = p.TryGetCommandLine(out var cmd) ? cmd : null
+                        };
+                    }
+                }
+                catch { }
+            }
+
             MqttAgent.Models.NeedsAttentionInfo? info = null;
             if (FlashingWindows.Count > 0)
             {
-                // Verify the flashing windows still exist
                 var toRemove = new List<IntPtr>();
                 foreach (var fw in FlashingWindows)
                 {
-                    if (!fw.IsVisible())
-                    {
-                        toRemove.Add(fw);
-                    }
-                    else if (info == null)
-                    {
-                        info = GetWindowInfo(fw);
-                    }
+                    if (!fw.IsVisible()) toRemove.Add(fw);
+                    else if (info == null) info = GetWindowInfo(fw);
                 }
                 foreach (var r in toRemove) FlashingWindows.Remove(r);
             }
@@ -199,11 +223,11 @@ namespace MqttAgent.Utils
                     if (hWnd.IsVisible())
                     {
                         string className = hWnd.GetWindowClassName();
-                        if (className == "#32770") // Dialog box
+                        if (className == "#32770" || className == "Credential Dialog Xaml Host")
                         {
                             info = GetWindowInfo(hWnd);
                             info.ClassName = className;
-                            return false; // Stop enumerating
+                            return false;
                         }
                     }
                     return true;
@@ -217,7 +241,6 @@ namespace MqttAgent.Utils
         public static MqttAgent.Models.NeedsAttentionInfo GetWindowInfo(IntPtr hWnd)
         {
             var info = new MqttAgent.Models.NeedsAttentionInfo();
-            
             info.WindowName = hWnd.GetWindowTitle();
             info.ClassName = hWnd.GetWindowClassName();
 
@@ -225,18 +248,38 @@ namespace MqttAgent.Utils
             {
                 info.ProcessName = process.ProcessName;
                 info.ProcessId = process.Id;
-                
-                if (process.TryGetCommandLine(out var cmdLine))
-                {
-                    info.CommandLine = cmdLine;
-                }
+                if (process.TryGetCommandLine(out var cmdLine)) info.CommandLine = cmdLine;
             }
             else
             {
                 info.ProcessName = "Unknown";
             }
-
             return info;
+        }
+
+        public static string GetActiveDesktopName()
+        {
+            IntPtr hDesktop = NativeMethods.OpenInputDesktop(0, false, 0x0001 /* DESKTOP_READOBJECTS */);
+            if (hDesktop == IntPtr.Zero) return "Unknown";
+
+            try
+            {
+                uint needed;
+                NativeMethods.GetUserObjectInformation(hDesktop, NativeMethods.UOI_NAME, null!, 0, out needed);
+                if (needed > 0)
+                {
+                    byte[] buffer = new byte[needed];
+                    if (NativeMethods.GetUserObjectInformation(hDesktop, NativeMethods.UOI_NAME, buffer, needed, out _))
+                    {
+                        return Encoding.Unicode.GetString(buffer).TrimEnd('\0');
+                    }
+                }
+            }
+            finally
+            {
+                NativeMethods.CloseDesktop(hDesktop);
+            }
+            return "Unknown";
         }
 
         public static bool IsNeedsAttention() => GetNeedsAttentionInfo() != null;

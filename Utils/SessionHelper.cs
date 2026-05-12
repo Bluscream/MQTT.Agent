@@ -6,6 +6,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
+using Modern_Windows_Message_Box_Generator.CLI;
 
 namespace MqttAgent.Utils;
 
@@ -24,43 +25,11 @@ public static class SessionHelper
             NativeMethods.SetProcessDPIAware();
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
 
-            if (args.Contains("--messagebox"))
+            if (args.Contains("--messagebox") || args.Contains("--xsoverlay") || args.Contains("--ovrtoolkit"))
             {
-                var titleIdx = Array.IndexOf(args, "--title");
-                var msgIdx = Array.IndexOf(args, "--message");
-                var typeIdx = Array.IndexOf(args, "--type");
-                var iconIdx = Array.IndexOf(args, "--icon");
-                var timeoutIdx = Array.IndexOf(args, "--timeout");
-
-                var title = (titleIdx >= 0 && titleIdx + 1 < args.Length) ? args[titleIdx + 1] : "Notification";
-                var message = (msgIdx >= 0 && msgIdx + 1 < args.Length) ? args[msgIdx + 1] : "";
-                var typeStr = (typeIdx >= 0 && typeIdx + 1 < args.Length) ? args[typeIdx + 1] : "MB_OK";
-                var iconStr = (iconIdx >= 0 && iconIdx + 1 < args.Length) ? args[iconIdx + 1] : "MB_ICONINFORMATION";
-                int timeoutMs = 0;
-                if (timeoutIdx >= 0 && timeoutIdx + 1 < args.Length) int.TryParse(args[timeoutIdx + 1], out timeoutMs);
-
-                MessageBoxButtons buttons = MessageBoxButtons.OK;
-                if (typeStr.Contains("OKCANCEL", StringComparison.OrdinalIgnoreCase)) buttons = MessageBoxButtons.OKCancel;
-                else if (typeStr.Contains("ABORTRETRYIGNORE", StringComparison.OrdinalIgnoreCase)) buttons = MessageBoxButtons.AbortRetryIgnore;
-                else if (typeStr.Contains("YESNOCANCEL", StringComparison.OrdinalIgnoreCase)) buttons = MessageBoxButtons.YesNoCancel;
-                else if (typeStr.Contains("YESNO", StringComparison.OrdinalIgnoreCase)) buttons = MessageBoxButtons.YesNo;
-                else if (typeStr.Contains("RETRYCANCEL", StringComparison.OrdinalIgnoreCase)) buttons = MessageBoxButtons.RetryCancel;
-
-                MessageBoxIcon mIcon = MessageBoxIcon.Information;
-                if (iconStr.Contains("ERROR", StringComparison.OrdinalIgnoreCase) || iconStr.Contains("HAND", StringComparison.OrdinalIgnoreCase) || iconStr.Contains("STOP", StringComparison.OrdinalIgnoreCase)) mIcon = MessageBoxIcon.Error;
-                else if (iconStr.Contains("QUESTION", StringComparison.OrdinalIgnoreCase)) mIcon = MessageBoxIcon.Question;
-                else if (iconStr.Contains("WARNING", StringComparison.OrdinalIgnoreCase) || iconStr.Contains("EXCLAMATION", StringComparison.OrdinalIgnoreCase)) mIcon = MessageBoxIcon.Warning;
-
-                Log($"Showing MessageBox: {title} - {message} (Buttons: {buttons}, Icon: {mIcon}, Timeout: {timeoutMs})");
-
-                if (timeoutMs > 0)
-                {
-                    var timer = new System.Windows.Forms.Timer { Interval = timeoutMs };
-                    timer.Tick += (s, e) => { timer.Stop(); SendKeys.SendWait("{ESC}"); };
-                    timer.Start();
-                }
-
-                MessageBox.Show(message, title, buttons, mIcon);
+                Log("Invoking Modern Message Box logic...");
+                // Pass all args to the integrated project
+                Modern_Windows_Message_Box_Generator.CLI.Program.Main(args);
                 return;
             }
 
@@ -76,6 +45,12 @@ public static class SessionHelper
             if (args.Contains("--screenshot-helper"))
             {
                 HandleScreenshot(args, Log);
+                return;
+            }
+
+            if (args.Contains("--stream-helper"))
+            {
+                HandleStream(args, Log);
                 return;
             }
         }
@@ -164,7 +139,35 @@ public static class SessionHelper
         if (displayIdx >= 0 && displayIdx + 1 < args.Length) display = args[displayIdx + 1];
 
         bool usePng = args.Contains("--png");
+        bool forceGdi = args.Contains("--force-gdi");
 
+        // Try DXGI first unless forced to GDI or capturing all screens (DXGI is per-monitor)
+        if (!forceGdi && !usePng && !display.Equals("all", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var dxgi = new MqttAgent.Utils.Capture.DxgiCaptureBackend();
+                dxgi.Initialize(display);
+                var frameTask = dxgi.CaptureFrame(quality);
+                frameTask.Wait();
+                var bytes = frameTask.Result;
+                
+                if (bytes != null && bytes.Length > 100)
+                {
+                    Log($"DXGI capture successful ({bytes.Length} bytes)");
+                    if (!string.IsNullOrEmpty(outPath)) File.WriteAllBytes(outPath, bytes);
+                    else Console.Write("data:image/jpeg;base64," + Convert.ToBase64String(bytes));
+                    return;
+                }
+                Log("DXGI capture returned no data, falling back to GDI.");
+            }
+            catch (Exception ex)
+            {
+                Log($"DXGI capture failed: {ex.Message}. Falling back to GDI.");
+            }
+        }
+
+        // Fallback to GDI (Existing logic)
         var screensList = new List<Rectangle>();
         NativeMethods.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref NativeMethods.Rect lprcMonitor, IntPtr dwData) =>
         {
@@ -237,6 +240,115 @@ public static class SessionHelper
             if (usePng) bitmap.Save(ms, ImageFormat.Png);
             else bitmap.Save(ms, ImageFormat.Jpeg);
             Console.Write("data:image/" + (usePng ? "png" : "jpeg") + ";base64," + Convert.ToBase64String(ms.ToArray()));
+        }
+    }
+
+    private static void HandleStream(string[] args, Action<string> Log)
+    {
+        int quality = 50;
+        int fps = 10;
+        string display = "all";
+        int port = 0;
+
+        var qualityIdx = Array.IndexOf(args, "--quality");
+        if (qualityIdx >= 0 && qualityIdx + 1 < args.Length) int.TryParse(args[qualityIdx + 1], out quality);
+
+        var fpsIdx = Array.IndexOf(args, "--fps");
+        if (fpsIdx >= 0 && fpsIdx + 1 < args.Length) int.TryParse(args[fpsIdx + 1], out fps);
+
+        var displayIdx = Array.IndexOf(args, "--display");
+        if (displayIdx >= 0 && displayIdx + 1 < args.Length) display = args[displayIdx + 1];
+        
+        var portIdx = Array.IndexOf(args, "--port");
+        if (portIdx >= 0 && portIdx + 1 < args.Length) int.TryParse(args[portIdx + 1], out port);
+
+        Log($"Stream helper starting (Display: {display}, FPS: {fps}, Quality: {quality}, Port: {port})");
+
+        MqttAgent.Utils.Capture.ICaptureBackend backend;
+        if (display.Equals("all", StringComparison.OrdinalIgnoreCase))
+        {
+            backend = new MqttAgent.Utils.Capture.GdiCaptureBackend();
+        }
+        else
+        {
+            backend = new MqttAgent.Utils.Capture.DxgiCaptureBackend();
+        }
+
+        try
+        {
+            backend.Initialize(display);
+        }
+        catch (Exception ex)
+        {
+            Log($"Backend initialization failed: {ex.Message}");
+            return;
+        }
+
+        using (backend)
+        {
+            var sw = new Stopwatch();
+            Stream outStream;
+            System.Net.Sockets.TcpClient? client = null;
+            
+            if (port > 0)
+            {
+                try
+                {
+                    client = new System.Net.Sockets.TcpClient("127.0.0.1", port);
+                    outStream = client.GetStream();
+                }
+                catch (Exception ex)
+                {
+                    Log($"Failed to connect to port {port}: {ex.Message}");
+                    return;
+                }
+            }
+            else
+            {
+                outStream = Console.OpenStandardOutput();
+            }
+
+            var boundary = System.Text.Encoding.ASCII.GetBytes("--frame\r\n");
+            var newLine = System.Text.Encoding.ASCII.GetBytes("\r\n");
+
+            try
+            {
+                while (true)
+                {
+                    sw.Restart();
+                    var frameTask = backend.CaptureFrame(quality);
+                    frameTask.Wait();
+                    var bytes = frameTask.Result;
+
+                    if (bytes != null)
+                    {
+                        var header = System.Text.Encoding.ASCII.GetBytes($"Content-Type: image/jpeg\r\nContent-Length: {bytes.Length}\r\n\r\n");
+                        outStream.Write(boundary, 0, boundary.Length);
+                        outStream.Write(header, 0, header.Length);
+                        outStream.Write(bytes, 0, bytes.Length);
+                        outStream.Write(newLine, 0, newLine.Length);
+                        outStream.Flush();
+                    }
+                    else if (!display.Equals("all", StringComparison.OrdinalIgnoreCase) && backend is MqttAgent.Utils.Capture.DxgiCaptureBackend)
+                    {
+                        // DXGI might have lost access (lock screen), try to re-initialize
+                        try { backend.Initialize(display); } catch { }
+                    }
+
+                    sw.Stop();
+                    int targetDelay = 1000 / Math.Max(1, Math.Min(60, fps));
+                    int remainingDelay = targetDelay - (int)sw.ElapsedMilliseconds;
+                    if (remainingDelay > 0) Thread.Sleep(remainingDelay);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Stream helper error: {ex.Message}");
+            }
+            finally
+            {
+                client?.Dispose();
+            }
         }
     }
 }

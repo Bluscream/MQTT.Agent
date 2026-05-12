@@ -11,17 +11,56 @@ public class NotifyRequest
     [JsonPropertyName("title")]
     public string Title { get; set; } = "Notification";
 
+    [JsonPropertyName("heading")]
+    public string? Heading { get; set; }
+
+    [JsonPropertyName("footer")]
+    public string? Footer { get; set; }
+
+    [JsonPropertyName("details")]
+    public string? Details { get; set; }
+
+    [JsonPropertyName("checkbox")]
+    public string? Checkbox { get; set; }
+
     [JsonPropertyName("type")]
-    public string Type { get; set; } = "toast"; // toast, messagebox, banner
+    public string Type { get; set; } = "toast";
 
     [JsonPropertyName("msgbox_type")]
-    public string MessageBoxType { get; set; } = "MB_OK";
+    public string MessageBoxType { get; set; } = "ok";
 
     [JsonPropertyName("msgbox_icon")]
-    public string MessageBoxIcon { get; set; } = "MB_ICONINFORMATION";
+    public string MessageBoxIcon { get; set; } = "info";
 
     [JsonPropertyName("timeout")]
     public int Timeout { get; set; } = 0;
+
+    [JsonPropertyName("classic")]
+    public bool Classic { get; set; }
+
+    [JsonPropertyName("callback")]
+    public string? Callback { get; set; }
+
+    [JsonPropertyName("flash")]
+    public bool Flash { get; set; }
+
+    [JsonPropertyName("ding")]
+    public bool Ding { get; set; }
+
+    [JsonPropertyName("toast")]
+    public bool? UseToast { get; set; }
+
+    [JsonPropertyName("messagebox")]
+    public bool? UseMessageBox { get; set; }
+
+    [JsonPropertyName("banner")]
+    public bool? UseBanner { get; set; }
+
+    [JsonPropertyName("xsoverlay")]
+    public bool? UseXSOverlay { get; set; }
+
+    [JsonPropertyName("ovrtoolkit")]
+    public bool? UseOVRToolkit { get; set; }
 
     [JsonPropertyName("data")]
     public NotificationData? Data { get; set; }

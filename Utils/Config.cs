@@ -73,7 +73,11 @@ public static class Config
         return string.Empty;
     }
 
-    public static bool HasArg(string arg) => _args.HasArg(arg) || _commandLine.Contains(arg.ToLowerInvariant());
+    public static bool HasArg(string arg) 
+    {
+        var lowerArg = arg.ToLowerInvariant();
+        return _args.Any(a => a.ToLowerInvariant() == lowerArg || a.ToLowerInvariant() == $"--{lowerArg.TrimStart('-')}" || a.ToLowerInvariant() == $"/{lowerArg.TrimStart('/')}");
+    }
 
     public static string? GetArgValue(string arg) => _args.GetArgValue(arg);
 }

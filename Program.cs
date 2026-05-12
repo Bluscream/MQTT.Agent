@@ -15,6 +15,7 @@ using MqttAgent.Services;
 using MqttAgent.Utils;
 using Serilog;
 using System.Text.Json;
+using Microsoft.OpenApi.Models;
 
 namespace MqttAgent;
 
@@ -98,7 +99,31 @@ public static class Program
         builder.Services.AddAuthentication("Token")
             .AddScheme<TokenAuthenticationSchemeOptions, TokenAuthenticationHandler>("Token", options => { });
         builder.Services.AddAuthorization();
+        
         builder.Services.AddControllers();
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen(c =>
+        {
+            c.SwaggerDoc("v1", new OpenApiInfo { Title = "MQTT.Agent API", Version = "v1" });
+            c.AddSecurityDefinition("Token", new OpenApiSecurityScheme
+            {
+                Description = "Token Authentication using 'Authorization: Bearer <token>' header or '?token=<token>' query parameter",
+                Name = "Authorization",
+                In = ParameterLocation.Header,
+                Type = SecuritySchemeType.Http,
+                Scheme = "bearer"
+            });
+            c.AddSecurityRequirement(new OpenApiSecurityRequirement
+            {
+                {
+                    new OpenApiSecurityScheme
+                    {
+                        Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Token" }
+                    },
+                    Array.Empty<string>()
+                }
+            });
+        });
 
         // Add IpcMcp Services
         builder.Services.AddSingleton<ProcessService>();
@@ -224,9 +249,17 @@ public static class Program
         app.UseRouting();
         app.UseAuthentication();
         app.UseAuthorization();
+
+        app.UseSwagger();
+        app.UseSwaggerUI(c =>
+        {
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "MQTT.Agent API v1");
+            c.RoutePrefix = "docs";
+        });
+
         app.MapControllers();
         
-        app.MapGet("/", () => "MQTT.Agent is running.");
+        app.MapGet("/", () => Results.Redirect("/docs"));
 
         if (isTray)
         {

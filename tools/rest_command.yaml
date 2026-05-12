@@ -1,23 +1,34 @@
 pc_notify_toast:
-  url: "http://192.168.2.99/api/notify?message={{message}}&title={{title}}&image=https://github.com/Bluscream/homeassistant-assets/blob/master/logo/home-assistant-logomark-color-on-light.png?raw=true"
+  url: "http://192.168.2.50:23482/api/notify"
   method: POST
   headers:
-    accept: "application/json, text/html, text/plain"
-    user-agent: "Mozilla/5.0 {{ useragent }}"
-  content_type: "application/json; charset=utf-8"
-  verify_ssl: false
-  timeout: 15
-  payload: '{"message": "{{ message }}","title": "{{ title }}","image": "https://github.com/Bluscream/homeassistant-assets/blob/master/logo/home-assistant-logomark-color-on-light.png?raw=true"}'
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+    accept: "application/json"
+    content_type: "application/json; charset=utf-8"
+  payload: >
+    {
+      "message": "{{ message }}",
+      "title": "{{ title | default('Notification') }}",
+      "useToast": true
+    }
+
+mqttagent_notify:
+  url: "http://192.168.2.50:23482/api/notify"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+    content_type: "application/json"
+  payload: >
+    {{ payload | to_json }}
 
 mqttagent_screenshot:
-  url: "http://192.168.2.50:23482/api/Screenshot"
+  url: "http://192.168.2.50:23482/api/screenshot"
   method: GET
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
-  # Optional: ?display={{ display }}&quality={{ quality }}&format={{ format }} can be added to URL if needed for GET
 
 mqttagent_toggle_block:
-  url: "http://192.168.2.50:23482/api/system/toggle-block"
+  url: "http://192.168.2.50:23482/api/toggle-block"
   method: POST
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
@@ -25,7 +36,7 @@ mqttagent_toggle_block:
   payload: '{"enabled": {{ enabled | lower }}}'
 
 mqttagent_toggle_force:
-  url: "http://192.168.2.50:23482/api/system/toggle-force"
+  url: "http://192.168.2.50:23482/api/toggle-force"
   method: POST
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
@@ -33,7 +44,7 @@ mqttagent_toggle_force:
   payload: '{"enabled": {{ enabled | lower }}}'
 
 mqttagent_execute:
-  url: "http://192.168.2.50:23482/api/system/execute"
+  url: "http://192.168.2.50:23482/api/execute"
   method: POST
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
@@ -41,7 +52,7 @@ mqttagent_execute:
   payload: '{"action": {{ action_json | to_json }}}'
 
 mqttagent_lock:
-  url: "http://192.168.2.50:23482/api/system/execute"
+  url: "http://192.168.2.50:23482/api/execute"
   method: POST
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
@@ -49,7 +60,7 @@ mqttagent_lock:
   payload: '{"action": "{\"action\": \"lock\"}"}'
 
 mqttagent_shutdown:
-  url: "http://192.168.2.50:23482/api/system/execute"
+  url: "http://192.168.2.50:23482/api/execute"
   method: POST
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
@@ -57,18 +68,21 @@ mqttagent_shutdown:
   payload: '{"action": "{\"action\": \"shutdown\"}"}'
 
 mqttagent_start_process:
-  url: "http://192.168.2.50:23482/api/system/execute"
+  url: "http://192.168.2.50:23482/api/start-process"
   method: POST
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
   content_type: "application/json"
   payload: >
     {
-      "action": {{ { "action": "start_process", "executable": exe, "arguments": args | default(""), "elevated": elevated | default(false) } | to_json | to_json }}
+      "executable": "{{ exe }}",
+      "arguments": "{{ args | default('') }}",
+      "elevated": {{ elevated | default(false) | lower }},
+      "waitForExit": {{ wait | default(false) | lower }}
     }
 
 mqttagent_device_enable:
-  url: "http://192.168.2.50:23482/api/device/enable"
+  url: "http://192.168.2.50:23482/api/device-enable"
   method: POST
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
@@ -76,7 +90,7 @@ mqttagent_device_enable:
   payload: '{"pattern": "{{ pattern }}"}'
 
 mqttagent_device_disable:
-  url: "http://192.168.2.50:23482/api/device/disable"
+  url: "http://192.168.2.50:23482/api/device-disable"
   method: POST
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
@@ -84,7 +98,7 @@ mqttagent_device_disable:
   payload: '{"pattern": "{{ pattern }}"}'
 
 mqttagent_device_restart:
-  url: "http://192.168.2.50:23482/api/device/restart"
+  url: "http://192.168.2.50:23482/api/device-restart"
   method: POST
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"

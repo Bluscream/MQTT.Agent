@@ -1,0 +1,2062 @@
+emergency_shutdown:
+  alias: Emergency Shutdown
+  sequence:
+  - service: light.turn_off
+    data: {}
+    target:
+      entity_id: all
+  - service: fan.turn_off
+    data: {}
+    target:
+      entity_id: all
+  - service: rest_command.ir_led_strip_off
+    data: {}
+  - service: climate.turn_off
+    data: {}
+    target:
+      entity_id: all
+  - service: humidifier.turn_off
+    data: {}
+    target:
+      entity_id: all
+  - service: siren.turn_on
+    data:
+      volume_level: 1
+    target:
+      entity_id: all
+  - service: switch.turn_off
+    data: {}
+    target:
+      entity_id: all
+  - service: switch.turn_on
+    data: {}
+  mode: single
+  icon: mdi:fire
+pair_smart_light:
+  alias: Pair Smart Light
+  sequence:
+  - repeat:
+      count: '8'
+      sequence:
+      - service: switch.toggle
+        data: {}
+        target:
+          entity_id: switch.automater_pi_ceiling_light_relais
+      - delay:
+          hours: 0
+          minutes: 0
+          seconds: 1
+          milliseconds: 0
+  - service: switch.turn_on
+    data: {}
+    target:
+      entity_id:
+      - switch.automater_pi_ceiling_light_relais
+  mode: single
+night_mode:
+  alias: Night mode
+  sequence:
+  - service: switch.turn_on
+    data: {}
+    target:
+      entity_id: switch.led_strip
+  - parallel:
+    - service: rest_command.ir_led_strip_color_red
+      data: {}
+    - service: switch.turn_off
+      data: {}
+      target:
+        entity_id: switch.automater_pi_floodlight_relais
+    - type: turn_off
+      device_id: 3ab05cf7e1bb579983a90975696fa17d
+      entity_id: light.ceiling_light
+      domain: light
+    - type: turn_off
+      device_id: 248420a04092564563aed64f02740818
+      entity_id: light.ceiling_light
+      domain: light
+    - device_id: a7dcec19a615085d7a0e0569f51471c8
+      domain: climate
+      entity_id: climate.tze200_bvu2wnxz_ts0601_thermostat
+      type: set_hvac_mode
+      hvac_mode: heat
+      enabled: true
+    - type: turn_on
+      device_id: a7dcec19a615085d7a0e0569f51471c8
+      entity_id: switch.tze200_bvu2wnxz_ts0601_switch
+      domain: switch
+      enabled: false
+    - service: climate.set_temperature
+      data:
+        temperature: 19
+      target:
+        device_id: a7dcec19a615085d7a0e0569f51471c8
+  mode: single
+  icon: mdi:chat-sleep
+relais_an:
+  alias: Relais aus
+  sequence:
+  - service: switch.turn_off
+    data: {}
+  mode: single
+deckenlampe_relais_an:
+  alias: Deckenlampe Relais an
+  sequence:
+  - service: switch.turn_on
+    data: {}
+    target:
+      entity_id:
+      - switch.automater_pi_ceiling_light_relais
+  mode: single
+deckenlampe_relais_aus:
+  alias: Deckenlampe Relais aus
+  sequence:
+  - service: switch.turn_off
+    data: {}
+    target:
+      entity_id:
+      - switch.automater_pi_ceiling_light_relais
+  mode: single
+buzz:
+  alias: Buzz
+  sequence:
+  - service: switch.turn_on
+    data: {}
+    target:
+      entity_id:
+      - switch.automater_x728_buzzer
+  - delay:
+      hours: 0
+      minutes: 0
+      seconds: 0
+      milliseconds: 100
+  - service: switch.turn_off
+    data: {}
+    target:
+      entity_id:
+      - switch.automater_x728_buzzer
+  mode: single
+  icon: mdi:alarm-bell
+ceiling_lamp_transition:
+  alias: ceiling_lamp_transition
+  sequence: []
+  mode: single
+new_script_2:
+  description: Broadcast all of devices
+  fields:
+    title:
+      description: The Title of the notification
+      example: Example text
+    message:
+      description: The content
+      example: Example text
+  sequence:
+  - service: tts.cloud_say
+    data:
+      entity_id: media_player.kitchen_speaker
+      message: '{{ message }}'
+      language: en-GB
+  mode: single
+  alias: Broadcast to All
+party_mode:
+  alias: Pink Blue Loop
+  sequence:
+  - repeat:
+      while:
+      - condition: state
+        entity_id: input_boolean.gender_reveal
+        state: 'on'
+      sequence:
+      - service: light.turn_on
+        target:
+          entity_id:
+          - light.under_cupboard_lightstrip
+          - light.dining_lightstrip
+          - light.kitchen_piano
+        data:
+          brightness_pct: 100
+          rgb_color:
+          - 255
+          - 109
+          - 255
+      - service: switch.turn_off
+        target:
+          entity_id: switch.kitchen_under_cupboard_lights
+      - delay:
+          hours: 0
+          minutes: 0
+          seconds: 30
+          milliseconds: 0
+      - service: light.turn_on
+        target:
+          entity_id:
+          - light.under_cupboard_lightstrip
+          - light.dining_lightstrip
+          - light.kitchen_piano
+        data:
+          brightness_pct: 100
+          rgb_color:
+          - 188
+          - 212
+          - 230
+      - delay:
+          hours: 0
+          minutes: 1
+          seconds: 0
+          milliseconds: 0
+  mode: single
+  icon: mdi:baby
+homeserver_lcd_toggle:
+  alias: HomeServer LCD Toggle
+  sequence:
+  - service: switch.turn_on
+    data: {}
+    target:
+      entity_id: switch.lcd_power_transistor
+  - delay:
+      hours: 0
+      minutes: 0
+      seconds: 0
+      milliseconds: 100
+  - service: switch.turn_off
+    data: {}
+    target:
+      entity_id: switch.lcd_power_transistor
+  - service: input_boolean.toggle
+    data: {}
+    target:
+      entity_id: input_boolean.homeserver_lcd_screen
+  mode: single
+  icon: mdi:monitor
+timed_ac:
+  alias: Timed a/c
+  sequence:
+  - event: dsfsfsdf
+    event_data: {}
+  - type: turn_on
+    device_id: 2b59e05f80c83d75881d2f2be8d1deb0
+    entity_id: 5850fd16c65b6dea667611f923eddf7c
+    domain: switch
+  - delay:
+      hours: 0
+      minutes: 30
+      seconds: 0
+      milliseconds: 0
+  - type: turn_off
+    device_id: 2b59e05f80c83d75881d2f2be8d1deb0
+    entity_id: 5850fd16c65b6dea667611f923eddf7c
+    domain: switch
+  mode: single
+  icon: mdi:account
+turn_on_dashboard_screen:
+  alias: Turn on dashboard screen for 1 minute
+  sequence:
+  - parallel:
+    - if:
+      - condition: state
+        entity_id: switch.esphome_69_dashboard_screen
+        state: 'off'
+        for:
+          hours: 0
+          minutes: 0
+          seconds: 1
+      then:
+      - service: switch.turn_on
+        metadata: {}
+        data: {}
+        target:
+          entity_id: switch.esphome_69_dashboard_screen
+    - if:
+      - condition: state
+        entity_id: binary_sensor.esphome_69_hallway_pir_sensor
+        state: 'off'
+        for:
+          hours: 0
+          minutes: 0
+          seconds: 1
+      then:
+      - service: browser_mod.close_popup
+        target:
+          device_id: 33d7d6f134842b9d89867d182a43a16c
+        data: {}
+        enabled: true
+  - delay:
+      hours: 0
+      minutes: 1
+      seconds: 0
+      milliseconds: 0
+  - if:
+    - condition: state
+      entity_id: binary_sensor.esphome_69_hallway_pir_sensor
+      state: 'off'
+      for:
+        hours: 0
+        minutes: 0
+        seconds: 1
+    then:
+    - service: switch.turn_off
+      target:
+        entity_id:
+        - switch.esphome_69_dashboard_screen
+      data: {}
+  mode: restart
+  icon: mdi:tablet-dashboard
+zigbee2mqtt_pair_timer:
+  alias: Zigbee2MQTT Pair Timer (5m)
+  sequence:
+  - service: switch.turn_on
+    metadata: {}
+    data: {}
+    target:
+      entity_id: switch.zigbee2mqtt_bridge_permit_join
+  - delay:
+      hours: 0
+      minutes: 5
+      seconds: 0
+      milliseconds: 0
+  - service: switch.turn_off
+    target:
+      entity_id:
+      - switch.zigbee2mqtt_bridge_permit_join
+    data: {}
+  description: ''
+  icon: mdi:zigbee
+delayed_bathroom_space_heater_shutoff:
+  alias: Delayed bathroom space heater shutoff
+  sequence:
+  - delay:
+      hours: 0
+      minutes: 30
+      seconds: 0
+      milliseconds: 0
+  - type: turn_off
+    device_id: a7526f80cc8805415adbd1ac70456cff
+    entity_id: 34d9b1b9be2d6cfad3f9304011775c4d
+    domain: switch
+  description: ''
+  icon: mdi:timer
+bathroom_space_heater_interval:
+  alias: Bathroom space heater interval
+  sequence:
+  - repeat:
+      count: 99
+      sequence:
+      - type: turn_on
+        device_id: a7526f80cc8805415adbd1ac70456cff
+        entity_id: 34d9b1b9be2d6cfad3f9304011775c4d
+        domain: switch
+      - delay:
+          hours: 0
+          minutes: 10
+          seconds: 0
+          milliseconds: 0
+      - type: turn_off
+        device_id: a7526f80cc8805415adbd1ac70456cff
+        entity_id: 34d9b1b9be2d6cfad3f9304011775c4d
+        domain: switch
+      - delay:
+          hours: 0
+          minutes: 5
+          seconds: 0
+          milliseconds: 0
+  description: ''
+nas_pc_start:
+  alias: NAS-PC Start
+  sequence:
+  - parallel:
+    - action: button.press
+      metadata: {}
+      data: {}
+      target:
+        entity_id:
+        - button.esphome_nas_pc_kvm_power_button
+    - action: wake_on_lan.send_magic_packet
+      data:
+        mac: 1C:86:0B:28:DC:96
+    - action: wake_on_lan.send_magic_packet
+      data:
+        mac: 1C:1B:0D:76:8B:F3
+    continue_on_error: true
+  mode: single
+networking_room_shutdown_all:
+  alias: Networking Room Shutdown All
+  sequence:
+  - action: switch.turn_off
+    metadata: {}
+    data: {}
+    continue_on_error: true
+    target:
+      entity_id: switch.esphome_69_dashboard_screen
+  - parallel:
+    - action: button.press
+      metadata: {}
+      data: {}
+      continue_on_error: true
+      target:
+        entity_id:
+        - button.cctv_power
+        - button.nas_pc_power
+        - button.nas_pc2_power
+        - button.homeserver_power
+        - button.dashboard_power
+        - button.esphome_69_shutdown
+    - if:
+      - condition: state
+        entity_id: binary_sensor.esphome_nas_pc_kvm_power_led_d7
+        state: 'on'
+      then:
+      - action: button.press
+        metadata: {}
+        data: {}
+        continue_on_error: true
+        target:
+          entity_id: button.esphome_nas_pc_kvm_shutdown
+  - action: hassio.host_shutdown
+    continue_on_error: false
+    metadata: {}
+    data: {}
+  description: ''
+  icon: mdi:power
+vrchat_send_text_message:
+  alias: Vrchat send text message
+  sequence:
+  - parallel:
+    - event: vrchat-pc
+      event_data:
+        address: /chatbox/input
+        message: '{{ message }} True'
+    - event: vrchat-pc2
+      event_data:
+        address: /chatbox/input
+        message: '{{ message }} True'
+    - event: vrchat-quest3
+      event_data:
+        address: /chatbox/input
+        message: '{{ message }} True'
+  mode: single
+  description: ''
+  icon: mdi:chat-processing
+  fields:
+    message:
+      selector:
+        text:
+      required: true
+      name: Message
+      description: Message to send
+nas_beep:
+  sequence:
+  - sequence:
+    - action: switch.turn_on
+      metadata: {}
+      data: {}
+      target:
+        entity_id: switch.esphome_nas_pc_kvm_buzzer
+    - repeat:
+        count: 50
+        sequence:
+        - type: toggle
+          device_id: f60db4bbb1af2b32e48b7c4bdbe2eae1
+          entity_id: e75a9451f9c5bcc67e71be40ff1cc1d4
+          domain: switch
+          enabled: false
+        - delay:
+            hours: 0
+            minutes: 0
+            seconds: 0
+            milliseconds: 150
+        - action: number.set_value
+          metadata: {}
+          data:
+            value: '{{ range(150, 5000) | random }}'
+          target:
+            entity_id: number.esphome_nas_pc_kvm_buzzer_pwm_frequency_hz
+    - parallel:
+      - type: turn_off
+        device_id: f60db4bbb1af2b32e48b7c4bdbe2eae1
+        entity_id: e75a9451f9c5bcc67e71be40ff1cc1d4
+        domain: switch
+      - action: switch.turn_off
+        metadata: {}
+        data: {}
+        target:
+          entity_id: switch.esphome_nas_pc_kvm_buzzer
+  alias: nas beep
+  description: ''
+pc_start_loop:
+  sequence:
+  - repeat:
+      count: 50
+      sequence:
+      - action: switch.turn_off
+        metadata: {}
+        target:
+          entity_id: switch.timos_pc_strip_socket_switch
+        data: {}
+      - delay:
+          hours: 0
+          minutes: 1
+          seconds: 0
+          milliseconds: 0
+      - action: switch.turn_on
+        metadata: {}
+        target:
+          entity_id: switch.timos_pc_strip_socket_switch
+        data: {}
+      - delay:
+          hours: 0
+          minutes: 0
+          seconds: 10
+          milliseconds: 0
+      - action: script.timo_pc_start
+        metadata: {}
+        data: {}
+      - delay:
+          hours: 0
+          minutes: 0
+          seconds: 31
+          milliseconds: 0
+  alias: pc start loop
+  description: ''
+ventilate_blu_s_room_start:
+  sequence:
+  - parallel:
+    - action: climate.set_hvac_mode
+      metadata: {}
+      target:
+        entity_id: climate.space_heater_heater
+      data:
+        hvac_mode: fan_only
+      enabled: false
+    - action: climate.set_temperature
+      metadata: {}
+      target:
+        area_id: timos_zimmer
+      data:
+        temperature: 5
+      enabled: true
+    - repeat:
+        count: 10
+        sequence:
+        - action: button.press
+          metadata: {}
+          target:
+            entity_id: button.automater_flirc_bridge_silvercrest_electric_radiator_temperature_down
+          data: {}
+        - delay:
+            hours: 0
+            minutes: 0
+            seconds: 0
+            milliseconds: 500
+  alias: Blu's Room Stop Heat
+  description: ''
+blu_s_room_start_ventilate:
+  sequence:
+  - parallel:
+    - action: switch.turn_on
+      metadata: {}
+      target:
+        entity_id: switch.timos_a_c_socket_switch
+      data: {}
+    - action: fan.turn_on
+      metadata: {}
+      target:
+        entity_id: fan.ventilator
+      data: {}
+  alias: Blu's Room Start Ventilate
+  description: ''
+  icon: mdi:snowflake-alert
+blu_s_room_max_heat:
+  sequence:
+  - parallel:
+    - action: climate.set_hvac_mode
+      metadata: {}
+      target:
+        entity_id:
+        - climate.space_heater_heater
+        - climate.blu_s_radiator
+      data:
+        hvac_mode: fan_only
+      enabled: false
+    - action: climate.set_temperature
+      metadata: {}
+      target:
+        area_id: timos_zimmer
+      data:
+        temperature: 29
+        hvac_mode: heat
+      enabled: true
+    - repeat:
+        count: 10
+        sequence:
+        - action: button.press
+          metadata: {}
+          target:
+            entity_id:
+            - button.automater_flirc_bridge_silvercrest_electric_radiator_temperature_up
+          data: {}
+        - delay:
+            hours: 0
+            minutes: 0
+            seconds: 0
+            milliseconds: 500
+  alias: Blu's Room Max Heat
+  description: ''
+lights_party:
+  alias: Lights Party
+  use_blueprint:
+    path: Bluscream/lights_party.yaml
+    input:
+      target_lights:
+      - light.ceiling_light_cloud
+      flash_interval_ms: 5000
+  description: ''
+lights_stop:
+  alias: Lights Stop
+  use_blueprint:
+    path: Bluscream/lights_stop.yaml
+    input:
+      restore_delay_ms: 1000
+  description: ''
+lights_flash_2:
+  alias: Lights Flash 2
+  use_blueprint:
+    path: Bluscream/lights_flash.yaml
+    input:
+      target_lights:
+      - light.bathroom_lights
+      primary_color:
+      - 255
+      - 0
+      - 0
+      secondary_color:
+      - 0
+      - 0
+      - 0
+  description: ''
+lights_flash_sync:
+  sequence:
+  - parallel:
+    - action: script.toggle
+      metadata: {}
+      target:
+        entity_id:
+        - script.lights_flash
+        - script.lights_flash_2
+      data: {}
+  alias: Lights Flash Sync
+  description: ''
+generic_alarm_lights_flash:
+  alias: Generic Alarm Lights Flash
+  use_blueprint:
+    path: Bluscream/lights_flash.yaml
+    input:
+      on_duration:
+        hours: 0
+        minutes: 0
+        seconds: 2
+      target_lights:
+      - light.all_lights
+      primary_color:
+      - 255
+      - 255
+      - 255
+      secondary_color:
+      - 255
+      - 255
+      - 255
+      secondary_brightness_pct: 50
+      secondary_duration:
+        hours: 0
+        minutes: 0
+        seconds: 0
+        milliseconds: 500
+  description: ''
+  icon: mdi:alarm-light
+automater_x728_siren:
+  alias: Automater X728 Siren
+  description: 'Pulses switch.automater_x728_buzzer in a siren rhythm (500 ms on/off
+    ×3, then 1.5 s off) until the script is turned off.
+
+    '
+  icon: mdi:alarm-bell
+  mode: restart
+  sequence:
+  - variables:
+      script_entity: '{{ this.entity_id }}'
+  - repeat:
+      while:
+      - condition: template
+        value_template: '{{ is_state(script_entity, ''on'') }}'
+      sequence:
+      - repeat:
+          count: 2
+          sequence:
+          - target:
+              entity_id: switch.automater_x728_buzzer
+            action: switch.turn_on
+          - delay: '00:00:00.500'
+          - target:
+              entity_id: switch.automater_x728_buzzer
+            action: switch.turn_off
+          - delay: '00:00:00.500'
+      - target:
+          entity_id: switch.automater_x728_buzzer
+        action: switch.turn_on
+      - delay: '00:00:00.500'
+      - target:
+          entity_id: switch.automater_x728_buzzer
+        action: switch.turn_off
+      - delay: '00:00:01.500'
+  - action: switch.turn_off
+    metadata: {}
+    target:
+      entity_id: switch.automater_x728_buzzer
+    data: {}
+blu_pc_notify:
+  alias: 'Blu-PC: Configurable Notify'
+  description: Sends a configurable notification to Blu-PC using msgbox.exe
+  fields:
+    title:
+      name: Window Title
+      description: The title of the notification window.
+      default: Blu-PC Notify
+      selector:
+        text: {}
+    message:
+      name: Message
+      description: The main body text of the notification.
+      default: Alert from Home Assistant
+      selector:
+        text: {}
+    heading:
+      name: Heading
+      description: A bold heading displayed at the top.
+      selector:
+        text: {}
+    footer:
+      name: Footer
+      description: Small text displayed at the bottom.
+      selector:
+        text: {}
+    details:
+      name: Details
+      description: Expanded information shown when clicking the details button.
+      selector:
+        text: {}
+    checkbox:
+      name: Checkbox Text
+      description: If provided, a checkbox with this label will be shown.
+      selector:
+        text: {}
+    callback:
+      name: Callback URL
+      description: URL to be called when the notification is closed/clicked.
+      selector:
+        text: {}
+    type:
+      name: Button Type
+      description: Standard Windows button combinations.
+      default: ok
+      selector:
+        select:
+          options:
+          - ok
+          - okcancel
+          - yesno
+          - yesnocancel
+          - retrycancel
+    icon:
+      name: Icon
+      description: The icon to display.
+      default: info
+      selector:
+        select:
+          options:
+          - info
+          - warning
+          - error
+          - shield
+    timeout:
+      name: Timeout
+      description: Auto-close after X milliseconds (0 for no timeout).
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 3600000
+          mode: box
+          unit_of_measurement: ms
+    flash:
+      name: Flash Taskbar
+      description: Whether to flash the taskbar icon.
+      default: true
+      selector:
+        boolean: {}
+    ding:
+      name: Play Sound
+      description: Whether to play a notification sound.
+      default: true
+      selector:
+        boolean: {}
+    via_notification:
+      name: Send via Notification
+      description: Deliver as a non-intrusive Windows notification (Tray/Toast).
+      default: true
+      selector:
+        boolean: {}
+    via_dialog:
+      name: Send via Dialog
+      description: Deliver as a high-visibility Windows MessageBox window.
+      default: false
+      selector:
+        boolean: {}
+    classic:
+      name: Classic Mode
+      description: Use the old-school Windows 95 style MessageBox.
+      default: false
+      selector:
+        boolean: {}
+  sequence:
+  - action: rest_command.mqttagent_notify
+    data:
+      payload:
+        title: "{{ title }}"
+        message: "{{ message }}"
+        heading: "{{ heading | default('') }}"
+        footer: "{{ footer | default('') }}"
+        details: "{{ details | default('') }}"
+        checkbox: "{{ checkbox | default('') }}"
+        type: "{{ type | default('ok') }}"
+        icon: "{{ icon | default('info') }}"
+        timeout: "{{ timeout | default(0) }}"
+        flash: "{{ flash | default(true) }}"
+        ding: "{{ ding | default(true) }}"
+        useToast: "{{ via_notification | default(true) }}"
+        useMessageBox: "{{ via_dialog | default(false) }}"
+        classic: "{{ classic | default(false) }}"
+        callback: "{{ callback | default('') }}"
+    - action: rest_command.mqttagent_execute
+      metadata: {}
+      data: {}
+      enabled: false
+    continue_on_error: true
+blu_pc_logout:
+  alias: Blu-PC Logout
+  sequence:
+  - parallel:
+    - data: {}
+      action: rest_command.timo_pc_logout
+    - data: {}
+      target:
+        entity_id:
+        - button.timo_pc_logoff
+        - button.blu_pc_logoff
+        - button.blu_pc_blu_pc_logoff
+        - button.hass_agent_blu_pc_logoff
+        - button.blu_pc_service_hass_agent_blu_pc_logoff
+        - button.blu_pc_service_hass_agent_blu_pc_logoff2
+        - button.hass_agent_blu_pc_logoff2
+      action: button.press
+    - action: mcp_client.blu_pc_ipc_mcp_tailnet_logout
+      metadata: {}
+      data:
+        allUsers: true
+        timeout: 5
+        message: Logout by HomeAssistant
+  mode: single
+  description: ''
+blu_pc_lock:
+  alias: Blu-PC Lock
+  description: ''
+  fields:
+    sleep_monitors:
+      name: Sleep Monitors
+      description: Turn off monitors after locking.
+      required: false
+      default: true
+      selector:
+        boolean: {}
+  sequence:
+  - parallel:
+    - data: {}
+      continue_on_error: true
+      target:
+        entity_id:
+        - button.timo_pc_lock
+        - button.blu_pc_blu_pc_lock
+        - button.blu_pc_service_hass_agent_blu_pc_lock
+        - button.hass_agent_blu_pc_lock
+      action: button.press
+    - data: {}
+      continue_on_error: true
+      action: rest_command.timo_pc_lock
+    - action: mcp_client.blu_pc_ipc_mcp_tailnet_lock
+      metadata: {}
+      data: {}
+      continue_on_error: true
+  - if:
+    - condition: template
+      value_template: '{{ sleep_monitors | default(true) }}'
+    then:
+    - delay:
+        hours: 0
+        minutes: 0
+        seconds: 5
+        milliseconds: 0
+    - parallel:
+      - action: button.press
+        metadata: {}
+        data: {}
+        continue_on_error: true
+        target:
+          entity_id:
+          - button.blu_pc_blu_pc_monitorsleep
+          - button.blu_pc_service_hass_agent_blu_pc_monitorsleep
+          - button.hass_agent_blu_pc_monitorsleep
+      - action: mcp_client.blu_pc_ipc_mcp_tailnet_displays
+        data:
+          action: turnoff
+        continue_on_error: true
+  mode: single
+blu_pc_sleep:
+  alias: Blu-PC Sleep
+  sequence:
+  - parallel:
+    - data: {}
+      action: rest_command.timo_pc_sleep
+    - data: {}
+      target:
+        entity_id:
+        - button.timo_pc_sleep
+        - button.timo_pc_service_sleep
+        - button.blu_pc_sleep
+        - button.blu_pc_service_sleep
+        - button.blu_pc_blu_pc_monitorsleep
+        - button.blu_pc_blu_pc_sleep
+        - button.blu_pc_service_blu_pc_service_sleep
+      action: button.press
+  mode: single
+  description: ''
+blu_pc_login:
+  alias: Blu-PC Login
+  description: 'Smart login script: checks PC power state, handles user switching
+    (logout before login), and supports toggle (logout if same user).'
+  fields:
+    target_user:
+      name: User
+      description: Choose the user to log into Blu-PC.
+      required: true
+      default: bluscream
+      selector:
+        select:
+          options:
+          - label: Bluscream
+            value: bluscream
+          - label: Gast
+            value: gast
+          - label: Guest
+            value: guest
+    lock_after_login:
+      name: Lock After Login
+      description: Lock the PC shortly after login so the user session starts up but
+        still requires a password to access.
+      required: false
+      default: false
+      selector:
+        boolean: {}
+  sequence:
+  - variables:
+      user_configs:
+        bluscream:
+          username: bluscream
+          password: Bueffel911mal2
+          display:
+            enable:
+            - AOCB419
+            disable:
+            - AAA
+            brightness: {}
+          audio:
+            enabled: true
+            volume: 100
+          lock_if_active: true
+        gast:
+          username: gast
+          password: gast
+          display:
+            enable:
+            - AAA
+            - ROW000
+            disable:
+            - AOCB419
+            brightness:
+              AAA: 1
+              ROW000: 1
+          audio:
+            enabled: false
+          lock_if_active: false
+        guest:
+          username: guest
+          password: guest
+          display:
+            enable:
+            - AAA
+            - ROW000
+            disable:
+            - AOCB419
+            brightness:
+              AAA: 1
+              ROW000: 1
+          audio:
+            enabled: false
+          lock_if_active: false
+      config: '{{ user_configs.get(target_user, user_configs[''bluscream'']) }}'
+      pc_status: '{{ states(''select.blu_pc_status'') }}'
+      logged_in_users: '{{ state_attr(''select.blu_pc_status'', ''logged_in_users'')
+        | default([], true) }}'
+      current_user_fallback: '{{ states(''sensor.hass_agent_blu_pc_loggeduser'') |
+        default('''', true) }}'
+      is_pc_off: '{{ pc_status in [''Off''] and (True or states(''binary_sensor.esphome_blu_pc_kvm_power_led'')
+        == ''off'') }}'
+      target_user_capitalized: '{{ target_user | capitalize }}'
+      is_target_logged_in: "{{ target_user_capitalized in logged_in_users or\n   (current_user_fallback
+        | lower) == target_user }}"
+      is_someone_else_logged_in: "{{ logged_in_users | length > 0 and\n   target_user_capitalized
+        not in logged_in_users and\n   pc_status not in ['Off', 'Logged out', 'Booting',
+        'Powered'] }}"
+  - if:
+    - condition: template
+      value_template: '{{ is_pc_off }}'
+    then:
+    - action: script.blu_pc_start
+      data:
+        use_wol: true
+        press_power_button: true
+        login_user: None
+      response_variable: response
+    - stop: PC was off — delegated to start script with auto-login.
+      error: false
+      enabled: false
+  - if:
+    - condition: template
+      value_template: '{{ is_target_logged_in }}'
+    then:
+    - action: script.blu_pc_logout
+      data: {}
+    - stop: Target user was already logged in — logged out (toggle).
+  - if:
+    - condition: template
+      value_template: '{{ is_someone_else_logged_in }}'
+    then:
+    - action: script.blu_pc_logout
+      data: {}
+    - wait_for_trigger:
+      - trigger: state
+        entity_id:
+        - select.blu_pc_status
+        to: Logged out
+      timeout:
+        seconds: 10
+      continue_on_timeout: true
+  - parallel:
+    - action: homeassistant.reload_config_entry
+      metadata: {}
+      data:
+        entry_id: 01KM41ES1CGDAAD63SS4RT3D3B
+      enabled: true
+    - action: homeassistant.reload_config_entry
+      metadata: {}
+      target:
+        entity_id: mcp_client.blu_pc_ipc_mcp_tailnet_login
+      data:
+        entry_id: 01KM3SYBRZ9DW3C08XGJKJ4G5P
+      enabled: true
+    enabled: false
+  - if:
+    - condition: template
+      value_template: "{{ config.lock_if_active and\n   target_user_capitalized in
+        states('sensor.blu_pc_service_blu_pc_service_loggedusers') }}"
+    then:
+    - action: script.blu_pc_lock
+      data: {}
+    - delay: 00:00:05
+  - delay:
+      hours: 0
+      minutes: 0
+      seconds: 3
+      milliseconds: 0
+  - action: mcp_client.blu_pc_ipc_tailnet_login
+    data:
+      keepCredentials: false
+      username: '{{ config.username }}'
+      password: '{{ config.password }}'
+  - delay:
+      hours: 0
+      minutes: 0
+      seconds: 3
+      milliseconds: 0
+  - action: mcp_client.blu_pc_ipc_tailnet_clear_credentials
+    data: {}
+    continue_on_error: true
+  - delay:
+      hours: 0
+      minutes: 0
+      seconds: 3
+      milliseconds: 0
+  - action: mcp_client.blu_pc_ipc_tailnet_displays
+    data:
+      enable: '{{ config.display.enable }}'
+      disable: '{{ config.display.disable }}'
+      set_brightness: '{{ config.display.brightness }}'
+    enabled: false
+  - if:
+    - condition: template
+      value_template: '{{ config.audio.enabled }}'
+    then:
+    - action: mcp_client.blu_pc_ipc_tailnet_audio
+      data:
+        enable:
+        - '*'
+        set_volumes:
+          '*': '{{ config.audio.volume }}'
+    continue_on_error: true
+  - if:
+    - condition: template
+      value_template: '{{ lock_after_login | default(false) }}'
+    then:
+    - delay: 00:00:15
+    - action: script.blu_pc_lock
+      data: {}
+  mode: restart
+blu_pc_shutdown:
+  alias: Blu-PC Shutdown
+  description: Consolidated script for shutdown, restart, and hibernate with KVM and
+    socket controls.
+  icon: mdi:power
+  mode: single
+  fields:
+    action_type:
+      name: Action Type
+      description: Select the power action to perform.
+      required: true
+      default: shutdown
+      selector:
+        select:
+          options:
+          - label: Shutdown
+            value: shutdown
+          - label: Restart
+            value: restart
+          - label: Hibernate
+            value: hibernate
+          - label: Sleep
+            value: sleep
+    force:
+      name: Force Action
+      description: Force the action immediately (equivalent to the old 'now' variations).
+      required: true
+      default: false
+      selector:
+        boolean: {}
+    press_power_button:
+      name: Press Power Button
+      description: Press the KVM power buttons.
+      required: true
+      default: false
+      selector:
+        boolean: {}
+    hard_power_off:
+      name: Hard Power Off Sequence
+      description: Perform the hard power off sequence (wait 30s, force shutdown,
+        wait 30m, hold KVM buttons, turn off strip socket).
+      required: true
+      default: false
+      selector:
+        boolean: {}
+    allow:
+      selector:
+        boolean: {}
+      name: Allow
+      required: true
+  sequence:
+  - if:
+    - condition: and
+      conditions:
+      - condition: template
+        value_template: '{{ allow is not true }}'
+      - condition: switch.is_on
+        target:
+          entity_id: switch.blu_pc_block_shutdown
+        options: {}
+    then:
+    - stop: Shutdown not allowed
+      error: true
+    - action: script.turn_off
+      metadata: {}
+      target:
+        entity_id: script.blu_pc_shutdown
+      data: {}
+    else:
+    - action: switch.turn_off
+      metadata: {}
+      target:
+        entity_id: switch.blu_pc_block_shutdown
+      data: {}
+  - if:
+    - condition: template
+      value_template: '{{ press_power_button }}'
+    then:
+    - action: button.press
+      target:
+        entity_id:
+        - button.esphome_blu_pc_kvm_power_switch
+        - button.esphome_blu_pc_kvm_power_button
+      continue_on_error: true
+      data: {}
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ action_type == ''sleep'' }}'
+      sequence:
+      - parallel:
+        - action: rest_command.timo_pc_sleep
+          continue_on_error: true
+        - action: button.press
+          target:
+            entity_id:
+            - button.timo_pc_sleep
+            - button.timo_pc_service_sleep
+            - button.blu_pc_sleep
+            - button.blu_pc_service_sleep
+            - button.blu_pc_blu_pc_monitorsleep
+            - button.blu_pc_blu_pc_sleep
+            - button.blu_pc_service_blu_pc_service_sleep
+          continue_on_error: true
+    - conditions:
+      - condition: template
+        value_template: '{{ action_type == ''hibernate'' }}'
+      sequence:
+      - parallel:
+        - action: button.press
+          target:
+            entity_id:
+            - button.timo_pc_hibernate_2
+            - button.timo_pc_service_hibernate_2
+            - button.timo_pc_hibernate_now_2
+            - button.timo_pc_hibernate
+            - button.timo_pc_service_hibernate
+            - button.blu_pc_hibernate_2
+            - button.blu_pc_service_hibernate_2
+            - button.blu_pc_hibernate_now_2
+            - button.blu_pc_hibernate
+            - button.blu_pc_service_hibernate
+            - button.blu_pc_blu_pc_hibernate
+            - button.blu_pc_service_blu_pc_service_hibernate
+          continue_on_error: true
+        - action: rest_command.timo_pc_hibernate
+          continue_on_error: true
+        - action: rest_command.timo_pc_hibernate_now
+          continue_on_error: true
+        - action: shell_command.hibernate_timo_pc
+          continue_on_error: true
+    - conditions:
+      - condition: template
+        value_template: '{{ action_type == ''restart'' }}'
+      sequence:
+      - parallel:
+        - action: shell_command.restart_timo_pc
+          continue_on_error: true
+        - action: button.press
+          target:
+            entity_id:
+            - button.timo_pc_restart_2
+            - button.timo_pc_restart_now_2
+            - button.timo_pc_restart
+            - button.timo_pc_service_restart
+            - button.blu_pc_restart_2
+            - button.blu_pc_restart_now_2
+            - button.blu_pc_restart
+            - button.blu_pc_service_restart
+            - button.blu_pc_linux_restart
+            - button.blu_pc_blu_pc_restart
+            - button.blu_pc_service_blu_pc_service_restart
+            - button.blu_pc_windows_restart
+          continue_on_error: true
+        - action: rest_command.timo_pc_restart
+          continue_on_error: true
+        - action: rest_command.timo_pc_restart_now
+          continue_on_error: true
+        - action: mcp_client.blu_pc_ipc_tailnet_reboot
+          metadata: {}
+          data:
+            force: true
+            timeout: 1
+            message: Reboot initiated by HASS/{{ states.person|selectattr("attributes.user_id",
+              "==", context.user_id)|map(attribute="attributes.friendly_name")|first
+              }}
+          continue_on_error: true
+        - action: ssh.restart
+          data: {}
+          target:
+            device_id: 58fdc454dfa7c2efc3c8d95a958084a0
+          continue_on_error: true
+        - action: mcp_client.blu_pc_ipc_tailnet_start_process
+          data:
+            executable: shutdown
+            arguments: /r /f /t 0
+            elevated: true
+          continue_on_error: true
+    - conditions:
+      - condition: template
+        value_template: '{{ action_type == ''shutdown'' and not force }}'
+      sequence:
+      - parallel:
+        - action: button.press
+          target:
+            entity_id:
+            - button.timo_pc_shutdown_2
+            - button.timo_pc_service_shutdown_2
+            - button.timo_pc_shutdown
+            - button.timo_pc_service_shutdown
+            - button.blu_pc_shutdown_2
+            - button.blu_pc_service_shutdown_2
+            - button.blu_pc_shutdown
+            - button.blu_pc_service_shutdown
+            - button.bluscream_pc_satellite_timo_pc_service_shutdown
+            - button.bluscream_pc_shutdown
+            - button.bluscream_pc_satellite_timo_pc_service_psshutdown
+            - button.bluscream_pc_timo_pc_pshutdown
+            - button.blu_pc_satellite_timo_pc_service_shutdown
+            - button.blu_pc_linux_power
+            - button.blu_pc_blu_pc_shutdown
+            - button.blu_pc_service_blu_pc_service_shutdown
+          continue_on_error: true
+        - action: rest_command.timo_pc_shutdown
+          continue_on_error: true
+    - conditions:
+      - condition: template
+        value_template: '{{ action_type == ''shutdown'' and force }}'
+      sequence:
+      - parallel:
+        - action: shell_command.shutdown_now_timo_pc
+          continue_on_error: true
+        - action: rest_command.timo_pc_shutdown_now
+          continue_on_error: true
+        - action: button.press
+          target:
+            entity_id:
+            - button.timo_pc_shutdown_2
+            - button.timo_pc_service_shutdown_2
+            - button.timo_pc_shutdown_now_2
+            - button.timo_pc_shutdown_now
+            - button.blu_pc_shutdown_2
+            - button.blu_pc_service_shutdown_2
+            - button.blu_pc_shutdown_now_2
+            - button.blu_pc_shutdown_now
+            - button.blu_pc_shutdownnow
+            - button.blu_pc_psshutdown
+            - button.blu_pc_linux_power
+          continue_on_error: true
+        - action: mcp_client.blu_pc_ipc_tailnet_shutdown
+          metadata: {}
+          data:
+            force: true
+            timeout: 1
+            message: Shutdown initiated by HASS/{{ states.person|selectattr("attributes.user_id",
+              "==", context.user_id)|map(attribute="attributes.friendly_name")|first
+              }}
+          continue_on_error: true
+        - action: mcp_client.blu_pc_ipc_50_shutdown
+          metadata: {}
+          data:
+            force: true
+            timeout: 1
+            message: Shutdown initiated by HASS/{{ states.person|selectattr("attributes.user_id",
+              "==", context.user_id)|map(attribute="attributes.friendly_name")|first
+              }}
+          continue_on_error: true
+        continue_on_error: true
+    continue_on_error: true
+  - if:
+    - condition: template
+      value_template: '{{ hard_power_off }}'
+    then:
+    - delay: 00:00:30
+    - if:
+      - condition: template
+        value_template: '{{ action_type == ''shutdown'' and not force }}'
+      then:
+      - parallel:
+        - action: shell_command.shutdown_now_timo_pc
+          continue_on_error: true
+        - action: rest_command.timo_pc_shutdown_now
+          continue_on_error: true
+        - action: button.press
+          target:
+            entity_id:
+            - button.timo_pc_shutdown_2
+            - button.timo_pc_service_shutdown_2
+            - button.timo_pc_shutdown_now_2
+            - button.timo_pc_shutdown_now
+            - button.blu_pc_shutdown_2
+            - button.blu_pc_service_shutdown_2
+            - button.blu_pc_shutdown_now_2
+            - button.blu_pc_shutdown_now
+            - button.blu_pc_shutdownnow
+            - button.blu_pc_psshutdown
+            - button.blu_pc_linux_power
+          continue_on_error: true
+    - delay: 00:30:00
+    - if:
+      - condition: template
+        value_template: '{{ press_power_button }}'
+      then:
+      - action: button.press
+        target:
+          entity_id:
+          - button.esphome_blu_pc_kvm_power_switch_hold
+          - button.esphome_blu_pc_kvm_power_button_hold
+        continue_on_error: true
+    - wait_for_trigger:
+      - trigger: numeric_state
+        entity_id:
+        - sensor.timos_pc_strip_socket_active_power
+        for:
+          minutes: 1
+        below: 50
+      timeout:
+        minutes: 5
+      continue_on_timeout: false
+    - action: switch.turn_off
+      target:
+        entity_id: switch.timos_pc_strip_socket_switch
+      continue_on_error: true
+      data: {}
+blu_pc_start:
+  alias: Blu-PC Start
+  description: Start using Wake on LAN and/or KVM power buttons.
+  icon: mdi:power
+  mode: single
+  fields:
+    use_wol:
+      name: Use Wake on LAN
+      description: Send Wake on LAN magic packets.
+      required: true
+      default: true
+      selector:
+        boolean: {}
+    press_power_button:
+      name: Press Power Button
+      description: Press the KVM power buttons.
+      required: true
+      default: false
+      selector:
+        boolean: {}
+    login_user:
+      name: Auto Login User
+      description: Choose a user to automatically log in after 5 minutes.
+      required: false
+      default: None
+      selector:
+        select:
+          options:
+          - None
+          - bluscream
+          - gast
+          - guest
+  sequence:
+  - if:
+    - condition: template
+      value_template: "{{ states('select.blu_pc_status') != 'Off' and\n   states('binary_sensor.esphome_blu_pc_kvm_power_led')
+        == 'on' }}"
+    then:
+    - if:
+      - condition: template
+        value_template: '{{ login_user not in [''None'', '''', none] }}'
+      then:
+      - action: script.blu_pc_login
+        data:
+          target_user: '{{ login_user }}'
+    - stop: PC is already on — skipped boot sequence.
+  - parallel:
+    - type: turn_on
+      device_id: 8cb8beb10320580103118f2d1e93e83a
+      entity_id: switch.timos_pc_strip_socket_switch
+      domain: switch
+    - data: {}
+      action: rest_command.ir_medion_tv_on_off
+      continue_on_error: true
+      enabled: false
+    - delay:
+        hours: 0
+        minutes: 0
+        seconds: 1
+        milliseconds: 0
+  - parallel:
+    - if:
+      - condition: template
+        value_template: '{{ press_power_button }}'
+      then:
+      - action: button.press
+        continue_on_error: true
+        target:
+          entity_id:
+          - button.esphome_blu_pc_kvm_power_switch
+          - button.esphome_blu_pc_kvm_power_button
+        data: {}
+    - if:
+      - condition: template
+        value_template: '{{ use_wol }}'
+      then:
+      - parallel:
+        - action: wake_on_lan.send_magic_packet
+          continue_on_error: true
+          data:
+            mac: 00:1A:7D:DA:71:15
+        - action: wake_on_lan.send_magic_packet
+          continue_on_error: true
+          data:
+            mac: 78:20:00:2B:C1:F1
+        - action: wake_on_lan.send_magic_packet
+          continue_on_error: true
+          data:
+            mac: D8:BB:C1:1C:CA:0D
+        - action: wake_on_lan.send_magic_packet
+          continue_on_error: true
+          data:
+            mac: D8:BB:C1:1C:CA:0C
+        - action: wake_on_lan.send_magic_packet
+          continue_on_error: true
+          data:
+            mac: 74:EA:3A:95:69:36
+        - action: wake_on_lan.send_magic_packet
+          continue_on_error: true
+          data:
+            mac: BC:30:7D:6F:35:85
+        - action: wake_on_lan.send_magic_packet
+          continue_on_error: true
+          data:
+            mac: 1C:1B:0D:76:8B:F3
+        - action: wake_on_lan.send_magic_packet
+          continue_on_error: true
+          data:
+            mac: 00:15:5D:A1:A9:D9
+        - action: wake_on_lan.send_magic_packet
+          continue_on_error: true
+          data:
+            mac: BC:30:7D:6F:35:87
+        - action: wake_on_lan.send_magic_packet
+          continue_on_error: true
+          data:
+            mac: BC:30:7D:6F:35:80
+        - action: wake_on_lan.send_magic_packet
+          continue_on_error: true
+          data:
+            mac: 00:15:5D:02:31:00
+  - wait_for_trigger:
+    - trigger: state
+      entity_id:
+      - select.blu_pc_status
+      to:
+      - Logged out
+      for:
+        hours: 0
+        minutes: 0
+        seconds: 0
+      from:
+      - Booting
+    timeout:
+      hours: 0
+      minutes: 5
+      seconds: 0
+      milliseconds: 0
+    continue_on_timeout: true
+  - if:
+    - condition: template
+      value_template: '{{ login_user != ''None'' }}'
+    then:
+    - action: script.turn_off
+      metadata: {}
+      target:
+        entity_id: script.blu_pc_login
+      data: {}
+      enabled: false
+    - action: script.blu_pc_login
+      data:
+        target_user: '{{ login_user }}'
+        lock_after_login: true
+notify:
+  alias: Notify
+  description: A unified wrapper for all notification services and entities in Home
+    Assistant.
+  fields:
+    via_notification:
+      name: Send via Notification
+      description: Deliver as a non-intrusive notification (used by PC/MQTT/Tablet).
+      default: true
+      selector:
+        boolean: {}
+    via_dialog:
+      name: Send via Dialog
+      description: Deliver as a high-visibility modal window or foreground popup (used
+        by PC).
+      default: false
+      selector:
+        boolean: {}
+    via_toast:
+      name: Send via Toast
+      description: Currently reserved for specific technical toasts (unused).
+      default: false
+      selector:
+        boolean: {}
+    persistent:
+      name: Persistent / Sticky Notification
+      description: Deliver as a non-dismissible or sticky notification (used by HA/Mobile).
+      default: false
+      selector:
+        boolean: {}
+    message:
+      name: Message
+      description: The main body text of the notification.
+      required: true
+      selector:
+        text:
+          multiline: true
+    title:
+      name: Title
+      description: The title of the notification window or tray message.
+      default: Home Assistant
+      selector:
+        text: {}
+    severity:
+      name: Target / Scope
+      description: Which group of people/devices should receive this notification.
+      default: blu
+      selector:
+        select:
+          options:
+          - all
+          - hass
+          - custom
+          - blu
+          - doris
+          - betty
+          - katze
+    callback:
+      name: Callback URL / Click URL
+      description: URL to be called when the notification is closed/clicked (used
+        by PC/ntfy).
+      selector:
+        text:
+          type: url
+    tag:
+      name: Tag
+      description: A tag for managing/replacing notifications (used by Mobile/ntfy/PC).
+      selector:
+        text: {}
+    icon:
+      name: Icon
+      description: Icon to display (used by PC/ntfy/Mobile).
+      selector:
+        text: {}
+    priority:
+      name: Priority
+      description: Priority level (used by Mobile/ntfy).
+      default: default
+      selector:
+        select:
+          options:
+          - min
+          - low
+          - default
+          - high
+          - max
+    timeout:
+      name: Lifecycle Timeout
+      description: Auto-close after X milliseconds (used by PC/Browser).
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 3600000
+          mode: box
+          unit_of_measurement: ms
+    entities:
+      name: Custom Entities
+      description: List of any entities to notify (used by Custom scope).
+      selector:
+        entity:
+          multiple: true
+    heading:
+      name: Heading
+      description: A bold heading displayed at the top (used by Dialogs/PC).
+      selector:
+        text: {}
+    footer:
+      name: Footer
+      description: Small text displayed at the bottom (used by Dialogs/PC).
+      selector:
+        text: {}
+    details:
+      name: Details
+      description: Expanded information (used by Dialogs/PC).
+      selector:
+        text:
+          multiline: true
+    checkbox:
+      name: Checkbox Text
+      description: Label for a checkbox (used by Dialogs/PC).
+      selector:
+        text: {}
+    flash:
+      name: Flash Taskbar
+      description: Whether to flash the taskbar icon (used by PC).
+      default: true
+      selector:
+        boolean: {}
+    classic:
+      name: Classic Mode
+      description: Use the old-school Windows 95 style MessageBox (used by PC).
+      default: false
+      selector:
+        boolean: {}
+    ding:
+      name: Play Sound
+      description: Whether to play a notification sound (used by PC).
+      default: true
+      selector:
+        boolean: {}
+    clickAction:
+      name: Click Action
+      description: URL or navigation path for notification click (used by Mobile).
+      selector:
+        text: {}
+    actions:
+      name: Actions
+      description: List of actions for interactive notifications (used by Mobile/ntfy).
+      selector:
+        object: {}
+    channel:
+      name: Notification Channel
+      description: Android notification channel name (used by Android).
+      selector:
+        text: {}
+    markdown:
+      name: Markdown Support
+      description: Use markdown formatting (used by ntfy).
+      default: false
+      selector:
+        boolean: {}
+    attach:
+      name: Attachment URL
+      description: URL of a file to attach (used by ntfy).
+      selector:
+        text:
+          type: url
+    filename:
+      name: Attachment Filename
+      description: Custom name for the attached file (used by ntfy).
+      selector:
+        text: {}
+    email:
+      name: Forward to Email
+      description: Email address to forward the notification to (used by ntfy).
+      selector:
+        text: {}
+    sequence_id:
+      name: Sequence ID
+      description: ID to group or replace specific notification sequences (used by
+        ntfy).
+      selector:
+        text: {}
+    via_browser_mod_toast:
+      selector:
+        boolean: {}
+      name: Browser Mod Toast
+  sequence:
+  - parallel:
+    - if:
+      - condition: template
+        value_template: '{{ persistent | default(false) or severity in [''all'', ''hass'']
+          }}'
+      then:
+      - action: notify.persistent_notification
+        data:
+          message: '{{ message }}'
+          title: '{{ title }}'
+    - if:
+      - condition: template
+        value_template: '{{ severity in [''blu'', ''all''] }}'
+      then:
+      - parallel:
+        - action: script.blu_pc_notify
+          data: "{%- set blu_data = {\n  'message': message,\n  'title': title,\n
+            \ 'icon': icon | default('info'),\n  'timeout': timeout | default(0),\n
+            \ 'flash': flash | default(true),\n  'ding': ding | default(true),\n  'via_notification':
+            via_notification | default(true),\n  'via_dialog': via_dialog | default(false),\n
+            \ 'classic': classic | default(false)\n} -%} {{ blu_data }}"
+          continue_on_error: true
+        - action: notify.mobile_app_blu_tablet
+          data:
+            message: '{{ message }}'
+            title: '{{ title }}'
+          continue_on_error: true
+        - action: notify.send_message
+          target:
+            entity_id:
+            - notify.blu_tablet
+          data:
+            message: '{{ message }}'
+            title: '{{ title }}'
+          continue_on_error: true
+        - action: rest_command.game_chat_notify
+          continue_on_error: true
+          data:
+            message: '{{ message }}'
+            title: '{{ title }}'
+          enabled: false
+        - action: rest_command.game_hud_notify
+          continue_on_error: true
+          data:
+            message: '{{ message }}'
+            title: '{{ title }}'
+          enabled: false
+        - action: ntfy.publish
+          data: "{% set ntfy_peratry = \"3\" %} {% if priority == 'max' %}{% set ntfy_peratry
+            = \"5\" %}{% elif priority == 'high' %}{% set ntfy_peratry = \"4\" %}{%
+            elif priority == 'low' %}{% set ntfy_peratry = \"2\" %}{% elif priority
+            == 'min' %}{% set ntfy_peratry = \"1\" %}{% endif %} {% set ntfy_data
+            = {\n  'message': message,\n  'title': title,\n  'priority': ntfy_peratry\n}
+            %} {% if callback and callback.startswith('http') %}{% set _ = ntfy_data.update({'click':
+            callback}) %}{% endif %} {% if tag %}{% set _ = ntfy_data.update({'tags':
+            tag}) %}{% endif %} {% if markdown %}{% set _ = ntfy_data.update({'markdown':
+            true}) %}{% endif %} {% if attach %}{% set _ = ntfy_data.update({'attach':
+            attach}) %}{% endif %} {% if filename %}{% set _ = ntfy_data.update({'filename':
+            filename}) %}{% endif %} {% if email %}{% set _ = ntfy_data.update({'email':
+            email}) %}{% endif %} {% if sequence_id %}{% set _ = ntfy_data.update({'sequence_id':
+            sequence_id}) %}{% endif %} {% if actions %}{% set _ = ntfy_data.update({'actions':
+            actions}) %}{% endif %} {% if icon is defined and icon.startswith('http')
+            %}{% set _ = ntfy_data.update({'icon': icon}) %}{% endif %} {{ ntfy_data
+            }}\n"
+          target:
+            entity_id: notify.blu_tablet
+          continue_on_error: true
+        - action: mqtt.publish
+          data:
+            topic: cmnd/mqtt_notify_blu_pc/notify
+            payload: "{\n  \"message\": \"{{ message }}\",\n  \"title\": \"{{ title
+              }}\",\n  \"heading\": \"{{ heading }}\",\n  \"footer\": \"{{ footer
+              }}\",\n  \"toast\": {{ via_notification | lower }}\n}\n"
+          continue_on_error: true
+        continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ severity in [''doris'', ''all''] }}'
+      then:
+      - action: notify.send_message
+        target:
+          entity_id: notify.doris_notify_devices
+        data:
+          message: '{{ message }}'
+          title: '{{ title }}'
+    - if:
+      - condition: template
+        value_template: '{{ severity in [''betty'', ''all''] }}'
+      then:
+      - action: notify.send_message
+        target:
+          entity_id: notify.betty_notify_devices
+        data:
+          message: '{{ message }}'
+          title: '{{ title }}'
+    - if:
+      - condition: template
+        value_template: '{{ severity in [''katze'', ''all''] }}'
+      then:
+      - action: notify.send_message
+        target:
+          entity_id: notify.katze_notify_devices
+        data:
+          message: '{{ message }}'
+          title: '{{ title }}'
+    - if:
+      - condition: template
+        value_template: '{{ severity == ''custom'' }}'
+      then:
+      - repeat:
+          for_each: '{{ entities }}'
+          sequence:
+          - parallel:
+            - if:
+              - condition: template
+                value_template: '{{ repeat.item.split(''.'')[0] == ''notify'' }}'
+              then:
+              - action: notify.send_message
+                target:
+                  entity_id: '{{ repeat.item }}'
+                data:
+                  message: '{{ message }}'
+                  title: '{{ title }}'
+            - if:
+              - condition: template
+                value_template: '{{ repeat.item.split(''.'')[0] == ''script'' }}'
+              then:
+              - action: '{{ repeat.item }}'
+                data: "{%- set custom_data = {\n  'message': message,\n  'title':
+                  title,\n  'via_notification': via_notification | default(true),\n
+                  \ 'via_dialog': via_dialog | default(false),\n  'classic': classic
+                  | default(false)\n} -%} {%- if via_dialog | default(false) -%}\n
+                  \ {%- if heading is defined -%}{%- set _ = custom_data.update({'heading':
+                  heading}) -%}{%- endif -%}\n  {%- if footer is defined -%}{%- set
+                  _ = custom_data.update({'footer': footer}) -%}{%- endif -%}\n  {%-
+                  if details is defined -%}{%- set _ = custom_data.update({'details':
+                  details}) -%}{%- endif -%}\n  {%- if callback is defined -%}{%-
+                  set _ = custom_data.update({'callback': callback}) -%}{%- endif
+                  -%}\n{%- endif -%} {{ custom_data }}"
+            - if:
+              - condition: template
+                value_template: '{{ repeat.item.split(''.'')[0] not in [''notify'',
+                  ''script''] }}'
+              then:
+              - action: '{{ repeat.item }}'
+                data:
+                  message: '{{ message }}'
+                  title: '{{ title }}'
+    - if:
+      - condition: template
+        value_template: '{{ severity in [''all'', ''hass''] and via_browser_mod_toast
+          }}'
+      then:
+      - action: browser_mod.notification
+        data:
+          message: '{{ message }}'
+          duration: '{{ timeout }}'
+  mode: queued
+  max: 10
+ttt:
+  fields:
+    left_color:
+      selector:
+        color_rgb: {}
+      default:
+      - 255
+      - 0
+      - 0
+      required: true
+    right_color:
+      selector:
+        color_rgb: {}
+      default:
+      - 255
+      - 0
+      - 0
+      required: true
+    brightness:
+      selector:
+        number:
+          min: 1
+          max: 100
+      default: 100
+      required: true
+    interval:
+      selector:
+        number:
+          min: 250
+          max: 999999
+          step: 250
+      default: 1000
+      name: Interval
+      required: true
+  sequence:
+  - repeat:
+      count: 9999
+      sequence:
+      - parallel:
+        - action: light.turn_on
+          metadata: {}
+          target:
+            entity_id:
+            - light.bathroom_mirror_left
+          data:
+            transition: '{{ interval/1000 }}'
+            rgb_color: '{{ left_color }}'
+            brightness_pct: '{{ brightness }}'
+        - action: light.turn_off
+          metadata: {}
+          data:
+            transition: '{{ interval/1000 }}'
+          target:
+            entity_id: light.bathroom_mirror_left
+      - delay:
+          hours: 0
+          minutes: 0
+          seconds: '{{ interval/1000 }}'
+          milliseconds: 0
+      - parallel:
+        - action: light.turn_on
+          metadata: {}
+          data:
+            transition: 1
+            rgb_color: '{{ right_color }}'
+            brightness_pct: '{{ brightness }}'
+          target:
+            entity_id: light.bathroom_mirror_right
+        - action: light.turn_off
+          metadata: {}
+          target:
+            entity_id: light.bathroom_mirror_right
+          data:
+            transition: 1
+      - delay:
+          hours: 0
+          minutes: 0
+          seconds: '{{ interval/1000 }}'
+          milliseconds: 0
+  alias: _ttt
+  description: ''
+restart_gpu_3_times:
+  alias: Restart GPU 3 Times
+  sequence:
+  - repeat:
+      count: 3
+      sequence:
+      - data:
+          title: GPU Maintenance
+          message: Restarting GPU (Cycle {{ repeat.index }}/3)...
+        action: rest_command.pc_notify_toast
+        enabled: false
+      - data:
+          pattern: AMD Radeon RX 9070 XT
+        action: rest_command.mqttagent_device_restart
+      - delay:
+          seconds: 10
+  - data:
+      title: GPU Maintenance
+      message: GPU Restart cycle complete.
+    action: rest_command.pc_notify_toast
+    enabled: false
+  mode: single
+  icon: mdi:gpu
+  description: ''
+blu_pc_hard_reboot:
+  sequence:
+  - action: button.press
+    metadata: {}
+    target:
+      entity_id: button.esphome_nas_pc_kvm_power_button_hold
+    data: {}
+  - delay:
+      hours: 0
+      minutes: 0
+      seconds: 10
+      milliseconds: 0
+  - action: script.blu_pc_start
+    metadata: {}
+    data:
+      use_wol: true
+      press_power_button: true
+      login_user: bluscream
+  alias: Blu-PC Hard Reboot
+  description: ''
+  fields: {}
+  mode: restart

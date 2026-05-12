@@ -9,11 +9,12 @@ using MqttAgent.Utils;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using System.Collections.Generic;
 
 namespace MqttAgent.Controllers;
 
 [ApiController]
-[Route("api/system")]
+[Route("api")]
 [Authorize]
 public class SystemController : ControllerBase
 {
@@ -39,22 +40,20 @@ public class SystemController : ControllerBase
 
         try
         {
-            if (request.Type.Equals("messagebox", StringComparison.OrdinalIgnoreCase))
+            var machineName = Global.SafeMachineName;
+            
+            // Handle multiple notification types based on flags or the 'Type' string
+            bool useToast = request.UseToast ?? request.Type.Contains("toast", StringComparison.OrdinalIgnoreCase);
+            bool useMessageBox = request.UseMessageBox ?? request.Type.Contains("messagebox", StringComparison.OrdinalIgnoreCase);
+            bool useBanner = request.UseBanner ?? request.Type.Contains("banner", StringComparison.OrdinalIgnoreCase);
+            bool useXSOverlay = request.UseXSOverlay ?? request.Type.Contains("xsoverlay", StringComparison.OrdinalIgnoreCase);
+            bool useOVRToolkit = request.UseOVRToolkit ?? request.Type.Contains("ovrtoolkit", StringComparison.OrdinalIgnoreCase);
+
+            // Default to Toast if nothing specified
+            if (!useToast && !useMessageBox && !useBanner && !useXSOverlay && !useOVRToolkit) useToast = true;
+
+            if (useToast)
             {
-                var sessionId = _processService.GetActiveConsoleSessionId();
-                var args = $"--messagebox --title \"{request.Title}\" --message \"{request.Message}\" --type \"{request.MessageBoxType}\" --icon \"{request.MessageBoxIcon}\" --timeout {request.Timeout}";
-                await _processService.StartProcess(Process.GetCurrentProcess().MainModule?.FileName ?? "MqttAgent.exe", args, asUser: sessionId.ToString());
-            }
-            else if (request.Type.Equals("banner", StringComparison.OrdinalIgnoreCase))
-            {
-                var sessionId = _processService.GetActiveConsoleSessionId();
-                var args = $"--banner --message \"{request.Message}\"";
-                await _processService.StartProcess(Process.GetCurrentProcess().MainModule?.FileName ?? "MqttAgent.exe", args, asUser: sessionId.ToString());
-            }
-            else
-            {
-                // Default to Toast via MQTT topic to leverage existing logic
-                var machineName = Global.SafeMachineName;
                 var topic = $"homeassistant/notify/{machineName}/command";
                 var payload = JsonSerializer.Serialize(new ToastPayload
                 {
@@ -63,6 +62,37 @@ public class SystemController : ControllerBase
                     Data = request.Data
                 });
                 await _mqtt.EnqueueAsync(topic, payload, false);
+            }
+
+            if (useMessageBox || useXSOverlay || useOVRToolkit)
+            {
+                var sessionId = _processService.GetActiveConsoleSessionId();
+                var argsList = new List<string> { "--title", $"\"{request.Title}\"", "--message", $"\"{request.Message}\"" };
+                
+                if (!string.IsNullOrEmpty(request.Heading)) argsList.AddRange(new[] { "--heading", $"\"{request.Heading}\"" });
+                if (!string.IsNullOrEmpty(request.Footer)) argsList.AddRange(new[] { "--footer", $"\"{request.Footer}\"" });
+                if (!string.IsNullOrEmpty(request.Details)) argsList.AddRange(new[] { "--details", $"\"{request.Details}\"" });
+                if (!string.IsNullOrEmpty(request.Checkbox)) argsList.AddRange(new[] { "--checkbox", $"\"{request.Checkbox}\"" });
+                if (!string.IsNullOrEmpty(request.MessageBoxType)) argsList.AddRange(new[] { "--type", request.MessageBoxType });
+                if (!string.IsNullOrEmpty(request.MessageBoxIcon)) argsList.AddRange(new[] { "--icon", request.MessageBoxIcon });
+                if (request.Timeout > 0) argsList.AddRange(new[] { "--timeout", request.Timeout.ToString() });
+                if (request.Classic) argsList.Add("--classic");
+                if (!string.IsNullOrEmpty(request.Callback)) argsList.AddRange(new[] { "--callback", $"\"{request.Callback}\"" });
+                if (request.Flash) argsList.Add("--flash");
+                if (request.Ding) argsList.Add("--ding");
+                if (useMessageBox) argsList.Add("--messagebox");
+                if (useXSOverlay) argsList.Add("--xsoverlay");
+                if (useOVRToolkit) argsList.Add("--ovrtoolkit");
+
+                var args = string.Join(" ", argsList);
+                await _processService.StartProcess(Process.GetCurrentProcess().MainModule?.FileName ?? "MqttAgent.exe", args, asUser: sessionId.ToString());
+            }
+
+            if (useBanner)
+            {
+                var sessionId = _processService.GetActiveConsoleSessionId();
+                var args = $"--banner --message \"{request.Message}\"";
+                await _processService.StartProcess(Process.GetCurrentProcess().MainModule?.FileName ?? "MqttAgent.exe", args, asUser: sessionId.ToString());
             }
 
             return Ok(new { status = "success" });

@@ -18,6 +18,7 @@ namespace MqttAgent.Utils
             public const string Install = "--install";
             public const string Uninstall = "--uninstall";
             public const string ScreenshotHelper = "--screenshot-helper";
+            public const string StreamHelper = "--stream-helper";
             public const string MessageBox = "--messagebox";
             public const string Banner = "--banner";
             public const string EntityState = "--entity-state";
@@ -34,9 +35,10 @@ namespace MqttAgent.Utils
         public static bool IsStartTrayEnabled { get; } = Config.GetBool("start-tray");
         
         public static bool IsScreenshotHelper { get; } = Config.GetBool("screenshot-helper");
+        public static bool IsStreamHelper { get; } = Config.GetBool("stream-helper");
         public static bool IsMessageBoxHelper { get; } = Config.GetBool("messagebox");
         public static bool IsBannerHelper { get; } = Config.GetBool("banner");
-        public static bool IsAnyHelper { get; } = IsScreenshotHelper || IsMessageBoxHelper || IsBannerHelper;
+        public static bool IsAnyHelper { get; } = IsScreenshotHelper || IsStreamHelper || IsMessageBoxHelper || IsBannerHelper;
 
         public static bool IsAdmin { get; } = new System.Security.Principal.WindowsPrincipal(
             System.Security.Principal.WindowsIdentity.GetCurrent()).IsInRole(
