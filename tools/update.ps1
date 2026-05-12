@@ -5,6 +5,7 @@ param (
     [switch]$Deploy,
     [switch]$Install,
     [switch]$Start,
+    [switch]$MoreStates,
     [string]$DeployPath = "D:\Scripts\MqttAgent.exe"
 )
 
@@ -139,13 +140,22 @@ if ($Install) {
     Write-Host "Ensuring firewall rule for port $Port..." -ForegroundColor Cyan
     $RuleName = "MQTT Agent"
     sudo powershell -Command "if (Get-NetFirewallRule -DisplayName '$RuleName' -ErrorAction SilentlyContinue) { Remove-NetFirewallRule -DisplayName '$RuleName' }; New-NetFirewallRule -DisplayName '$RuleName' -Direction Inbound -Program '$TargetExe' -Action Allow -LocalPort $Port -Protocol TCP"
+
+    if ($MoreStates) {
+        Write-Host "Enabling MoreStates in service configuration..." -ForegroundColor Gray
+        sudo sc.exe config $ServiceName binPath= "$TargetExe --service --more-states"
+    }
 }
 
 if ($Start) {
     Write-Host "Starting MQTT Agent Service via sudo..." -ForegroundColor Cyan
     sudo sc.exe start $ServiceName
+    Start-Sleep -Seconds 3
     $TargetExe = if (Test-Path $DeployPath) { $DeployPath } else { $ExePath }
-    Start-Process $TargetExe -ArgumentList "-tray", "-token", $Token
+    Write-Host $TargetExe
+    $StartArgs = @("-tray", "-token", $Token)
+    if ($MoreStates) { $StartArgs += "-more-states" }
+    Start-Process $TargetExe -ArgumentList $StartArgs
 }
 
 Write-Host "Done!" -ForegroundColor Green

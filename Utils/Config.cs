@@ -38,9 +38,9 @@ public static class Config
     {
         foreach (var key in keys)
         {
-            var lowerK = key.ToLowerInvariant();
+            var lowerK = key.TrimStart('-').TrimStart('/').ToLowerInvariant();
             
-            // Check for existence as a flag first (e.g. --tray)
+            // Check for existence as a flag first (e.g. --tray, /tray, tray)
             if (HasArg($"--{lowerK}") || HasArg($"/{lowerK}") || HasArg(key)) return true;
 
             // Then check for explicit values (true/false, 1/0, etc)
@@ -52,19 +52,21 @@ public static class Config
 
     private static string GetInternal(string key)
     {
+        var cleanKey = key.TrimStart('-').TrimStart('/');
+
         // 1. Args: --key or /key
-        var argValue = _args.GetArgValue($"--{key}") ?? _args.GetArgValue($"/{key}");
+        var argValue = _args.GetArgValue($"--{cleanKey}") ?? _args.GetArgValue($"/{cleanKey}");
         if (!string.IsNullOrEmpty(argValue)) return argValue;
 
         // 2. Env Vars: KEY_NAME (replace - with _)
-        var envVal = Environment.GetEnvironmentVariable(key.ToEnvKey()) ?? 
-                     Environment.GetEnvironmentVariable(key.ToEnvKey("MQTTAGENT_"));
+        var envVal = Environment.GetEnvironmentVariable(cleanKey.ToEnvKey()) ?? 
+                     Environment.GetEnvironmentVariable(cleanKey.ToEnvKey("MQTTAGENT_"));
         if (!string.IsNullOrEmpty(envVal)) return envVal;
 
         // 3. Configuration (appsettings.json / MqttAgent.json)
         if (_configuration != null)
         {
-            var cfgVal = _configuration.GetWithAliases(key);
+            var cfgVal = _configuration.GetWithAliases(cleanKey);
             if (!string.IsNullOrEmpty(cfgVal)) return cfgVal;
         }
 

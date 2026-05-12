@@ -3,6 +3,9 @@ using System.Management;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using MqttAgent.Utils;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace MqttAgent.Services;
 
@@ -13,7 +16,37 @@ public class ProcessService
     private static extern bool WTSQueryUserToken(uint SessionId, out IntPtr phToken);
 
     [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern uint WTSGetActiveConsoleSessionId();
+    private static extern IntPtr GetCurrentProcess();
+
+    private bool EnablePrivilege(string privilegeName)
+    {
+        IntPtr hToken = IntPtr.Zero;
+        try
+        {
+            if (!NativeMethods.OpenProcessToken(GetCurrentProcess(), NativeMethods.TOKEN_ADJUST_PRIVILEGES | NativeMethods.TOKEN_QUERY, out hToken))
+                return false;
+
+            NativeMethods.LUID luid = new NativeMethods.LUID();
+            if (!NativeMethods.LookupPrivilegeValue(null, privilegeName, out luid))
+                return false;
+
+            NativeMethods.TOKEN_PRIVILEGES tp = new NativeMethods.TOKEN_PRIVILEGES
+            {
+                PrivilegeCount = 1,
+                Privilege = new NativeMethods.LUID_AND_ATTRIBUTES
+                {
+                    Luid = luid,
+                    Attributes = NativeMethods.SE_PRIVILEGE_ENABLED
+                }
+            };
+
+            return NativeMethods.AdjustTokenPrivileges(hToken, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero);
+        }
+        finally
+        {
+            if (hToken != IntPtr.Zero) CloseHandle(hToken);
+        }
+    }
 
     [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     private static extern bool CreateProcessAsUser(
@@ -201,7 +234,7 @@ public class ProcessService
             }
 
             // Fallback: try active console session
-            var activeSession = WTSGetActiveConsoleSessionId();
+            var activeSession = NativeMethods.WTSGetActiveConsoleSessionId();
             if (activeSession != 0)
             {
                 return activeSession;
@@ -217,7 +250,7 @@ public class ProcessService
 
     public uint GetActiveConsoleSessionId()
     {
-        return WTSGetActiveConsoleSessionId();
+        return NativeMethods.WTSGetActiveConsoleSessionId();
     }
 
     private Process CreateProcessInternal(IntPtr? token, string command, string arguments, out int processId, string desktop = "winsta0\\default", ProcessWindowStyle windowStyle = ProcessWindowStyle.Normal)
@@ -315,7 +348,14 @@ public class ProcessService
                 if (!string.IsNullOrEmpty(asUser))
                 {
                     uint sessionId = GetUserSessionId(asUser);
-                    if (!WTSQueryUserToken(sessionId, out userToken))
+                    
+                    // Enable SeTcbPrivilege to allow WTSQueryUserToken to succeed when running as SYSTEM
+                    if (!EnablePrivilege(NativeMethods.SE_TCB_NAME))
+                    {
+                        // Log but don't fail, maybe we already have it or don't need it (if not running as SYSTEM)
+                    }
+
+                    if (!NativeMethods.WTSQueryUserToken(sessionId, out userToken))
                     {
                         throw new Exception($"Failed to get user token for session {sessionId}. Error: {Marshal.GetLastWin32Error()}");
                     }

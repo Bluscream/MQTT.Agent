@@ -9,6 +9,9 @@ using System.Linq;
 using System.Management;
 using System.ServiceProcess;
 using System.Threading;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using LibreHardwareMonitor.Hardware;
@@ -153,8 +156,8 @@ namespace MqttAgent.Services
             }
 
             bool httpSuccess = false;
-            var hassServer = Environment.GetEnvironmentVariable("HASS_SERVER");
-            var hassToken = Environment.GetEnvironmentVariable("HASS_TOKEN");
+            var hassServer = Config.Get("hass-server", "hass_server", "HASS_SERVER");
+            var hassToken = Config.Get("hass-token", "hass_token", "HASS_TOKEN");
             
             if (!string.IsNullOrEmpty(hassServer) && !string.IsNullOrEmpty(hassToken))
             {
@@ -339,7 +342,8 @@ namespace MqttAgent.Services
                     process_name = attentionInfo.ProcessName,
                     process_id = attentionInfo.ProcessId,
                     command_line = attentionInfo.CommandLine,
-                    class_name = attentionInfo.ClassName
+                    class_name = attentionInfo.ClassName,
+                    timestamp = DateTime.UtcNow.ToString("O")
                 };
             }
 
@@ -366,10 +370,6 @@ namespace MqttAgent.Services
                 }
                 else
                 {
-                    // Still in threshold, return last known info if possible?
-                    // Actually, if info is null but we're in threshold, we might just return null and the state will flip back to "On"
-                    // But the user said "CheckNeedsAttention" logic was to prevent flickering.
-                    // So if we're in threshold, we should probably stay in "Needs attention" state.
                     return _lastAttentionInfo; 
                 }
             }
