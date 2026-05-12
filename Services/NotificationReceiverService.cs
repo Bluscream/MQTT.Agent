@@ -12,7 +12,6 @@ using Windows.UI.Notifications;
 using MqttAgent.Models;
 using NotificationData = MqttAgent.Models.NotificationData;
 using Modern_Windows_Message_Box_Generator.CLI;
-using SoundSwitch.Banner;
 using System.Drawing;
 
 namespace MqttAgent.Services;

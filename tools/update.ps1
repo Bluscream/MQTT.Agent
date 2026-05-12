@@ -140,16 +140,6 @@ if ($Install) {
     if ($StartTray) { $InstallArgs += "--start-tray" }
     sudo $TargetExe $InstallArgs
     
-    Write-Host "Ensuring firewall rule for port $Port..." -ForegroundColor Cyan
-    $RuleName = "MQTT Agent"
-    try {
-        if (Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue) {
-            Remove-NetFirewallRule -DisplayName $RuleName -ErrorAction Stop
-        }
-        New-NetFirewallRule -DisplayName $RuleName -Direction Inbound -Program $TargetExe -Action Allow -LocalPort $Port -Protocol TCP -ErrorAction Stop
-    } catch {
-        Write-Host "Warning: Failed to ensure firewall rule: $($_.Exception.Message). Ensure you are running as administrator if this fails." -ForegroundColor Yellow
-    }
 
 }
 

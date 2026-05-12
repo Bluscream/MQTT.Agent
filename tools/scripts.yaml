@@ -507,7 +507,7 @@ pc_start_loop:
           minutes: 0
           seconds: 10
           milliseconds: 0
-      - action: script.timo_pc_start
+      - action: script.blu_pc_start
         metadata: {}
         data: {}
       - delay:
@@ -816,8 +816,36 @@ blu_pc_notify:
       default: false
       selector:
         boolean: {}
+    via_banner:
+      name: Send via Banner
+      description: Deliver as a SoundSwitch-style visual banner.
+      default: false
+      selector:
+        boolean: {}
+    banner_position:
+      name: Banner Position
+      description: Screen position for the banner.
+      default: TopRight
+      selector:
+        select:
+          options:
+          - TopLeft
+          - TopCenter
+          - TopRight
+          - MiddleLeft
+          - MiddleCenter
+          - MiddleRight
+          - BottomLeft
+          - BottomCenter
+          - BottomRight
+    via_vr_headset:
+      name: Via VR Headset
+      description: Deliver to VR headset via XSOverlay and OVRToolkit.
+      default: false
+      selector:
+        boolean: {}
   sequence:
-  - action: rest_command.mqttagent_notify
+  - action: rest_command.blu_pc_notify
     data:
       payload:
         title: "{{ title }}"
@@ -831,11 +859,15 @@ blu_pc_notify:
         timeout: "{{ timeout | default(0) }}"
         flash: "{{ flash | default(true) }}"
         ding: "{{ ding | default(true) }}"
-        useToast: "{{ via_notification | default(true) }}"
-        useMessageBox: "{{ via_dialog | default(false) }}"
+        toast: "{{ via_notification | default(true) }}"
+        messagebox: "{{ via_dialog | default(false) }}"
+        banner: "{{ via_banner | default(false) }}"
+        banner_position: "{{ banner_position | default('TopRight') }}"
+        xsoverlay: "{{ via_vr_headset | default(false) }}"
+        ovrtoolkit: "{{ via_vr_headset | default(false) }}"
         classic: "{{ classic | default(false) }}"
         callback: "{{ callback | default('') }}"
-    - action: rest_command.mqttagent_execute
+    - action: rest_command.blu_pc_execute
       metadata: {}
       data: {}
       enabled: false
@@ -845,7 +877,7 @@ blu_pc_logout:
   sequence:
   - parallel:
     - data: {}
-      action: rest_command.timo_pc_logout
+      action: rest_command.blu_pc_logout
     - data: {}
       target:
         entity_id:
@@ -889,7 +921,7 @@ blu_pc_lock:
       action: button.press
     - data: {}
       continue_on_error: true
-      action: rest_command.timo_pc_lock
+      action: rest_command.blu_pc_lock
     - action: mcp_client.blu_pc_ipc_mcp_tailnet_lock
       metadata: {}
       data: {}
@@ -923,7 +955,7 @@ blu_pc_sleep:
   sequence:
   - parallel:
     - data: {}
-      action: rest_command.timo_pc_sleep
+      action: rest_command.blu_pc_sleep
     - data: {}
       target:
         entity_id:
@@ -1219,7 +1251,7 @@ blu_pc_shutdown:
         value_template: '{{ action_type == ''sleep'' }}'
       sequence:
       - parallel:
-        - action: rest_command.timo_pc_sleep
+        - action: rest_command.blu_pc_sleep
           continue_on_error: true
         - action: button.press
           target:
@@ -1253,9 +1285,9 @@ blu_pc_shutdown:
             - button.blu_pc_blu_pc_hibernate
             - button.blu_pc_service_blu_pc_service_hibernate
           continue_on_error: true
-        - action: rest_command.timo_pc_hibernate
+        - action: rest_command.blu_pc_hibernate
           continue_on_error: true
-        - action: rest_command.timo_pc_hibernate_now
+        - action: rest_command.blu_pc_hibernate_now
           continue_on_error: true
         - action: shell_command.hibernate_timo_pc
           continue_on_error: true
@@ -1282,9 +1314,9 @@ blu_pc_shutdown:
             - button.blu_pc_service_blu_pc_service_restart
             - button.blu_pc_windows_restart
           continue_on_error: true
-        - action: rest_command.timo_pc_restart
+        - action: rest_command.blu_pc_restart
           continue_on_error: true
-        - action: rest_command.timo_pc_restart_now
+        - action: rest_command.blu_pc_restart_now
           continue_on_error: true
         - action: mcp_client.blu_pc_ipc_tailnet_reboot
           metadata: {}
@@ -1331,7 +1363,7 @@ blu_pc_shutdown:
             - button.blu_pc_blu_pc_shutdown
             - button.blu_pc_service_blu_pc_service_shutdown
           continue_on_error: true
-        - action: rest_command.timo_pc_shutdown
+        - action: rest_command.blu_pc_shutdown
           continue_on_error: true
     - conditions:
       - condition: template
@@ -1340,7 +1372,7 @@ blu_pc_shutdown:
       - parallel:
         - action: shell_command.shutdown_now_timo_pc
           continue_on_error: true
-        - action: rest_command.timo_pc_shutdown_now
+        - action: rest_command.blu_pc_shutdown_now
           continue_on_error: true
         - action: button.press
           target:
@@ -1389,7 +1421,7 @@ blu_pc_shutdown:
       - parallel:
         - action: shell_command.shutdown_now_timo_pc
           continue_on_error: true
-        - action: rest_command.timo_pc_shutdown_now
+        - action: rest_command.blu_pc_shutdown_now
           continue_on_error: true
         - action: button.press
           target:
@@ -1615,6 +1647,34 @@ notify:
       default: false
       selector:
         boolean: {}
+    via_banner:
+      name: Send via Banner
+      description: Deliver as a SoundSwitch-style visual banner (used by PC).
+      default: false
+      selector:
+        boolean: {}
+    banner_position:
+      name: Banner Position
+      description: Screen position for the banner (used by PC).
+      default: TopRight
+      selector:
+        select:
+          options:
+          - TopLeft
+          - TopCenter
+          - TopRight
+          - MiddleLeft
+          - MiddleCenter
+          - MiddleRight
+          - BottomLeft
+          - BottomCenter
+          - BottomRight
+    via_vr_headset:
+      name: Via VR Headset
+      description: Deliver to VR headset via XSOverlay and OVRToolkit (used by PC).
+      default: false
+      selector:
+        boolean: {}
     message:
       name: Message
       description: The main body text of the notification.
@@ -1773,6 +1833,34 @@ notify:
       selector:
         boolean: {}
       name: Browser Mod Toast
+    via_banner:
+      name: Send via Banner
+      description: Deliver as a SoundSwitch-style visual banner (used by PC).
+      default: false
+      selector:
+        boolean: {}
+    banner_position:
+      name: Banner Position
+      description: Screen position for the banner (used by PC).
+      default: TopRight
+      selector:
+        select:
+          options:
+          - TopLeft
+          - TopCenter
+          - TopRight
+          - MiddleLeft
+          - MiddleCenter
+          - MiddleRight
+          - BottomLeft
+          - BottomCenter
+          - BottomRight
+    via_vr_headset:
+      name: Via VR Headset
+      description: Deliver to VR headset via XSOverlay and OVRToolkit (used by PC).
+      default: false
+      selector:
+        boolean: {}
   sequence:
   - parallel:
     - if:
@@ -1790,11 +1878,22 @@ notify:
       then:
       - parallel:
         - action: script.blu_pc_notify
-          data: "{%- set blu_data = {\n  'message': message,\n  'title': title,\n
-            \ 'icon': icon | default('info'),\n  'timeout': timeout | default(0),\n
-            \ 'flash': flash | default(true),\n  'ding': ding | default(true),\n  'via_notification':
-            via_notification | default(true),\n  'via_dialog': via_dialog | default(false),\n
-            \ 'classic': classic | default(false)\n} -%} {{ blu_data }}"
+          data: >
+            {% set blu_data = {
+              'message': message,
+              'title': title,
+              'icon': icon | default('info'),
+              'timeout': timeout | default(0),
+              'flash': flash | default(true),
+              'ding': ding | default(true),
+              'via_notification': via_notification | default(true),
+              'via_dialog': via_dialog | default(false),
+              'classic': classic | default(false),
+              'via_banner': via_banner | default(false),
+              'banner_position': banner_position | default('TopRight'),
+              'via_vr_headset': via_vr_headset | default(false)
+            } %}
+            {{ blu_data }}
           continue_on_error: true
         - action: notify.mobile_app_blu_tablet
           data:
@@ -1844,9 +1943,18 @@ notify:
         - action: mqtt.publish
           data:
             topic: cmnd/mqtt_notify_blu_pc/notify
-            payload: "{\n  \"message\": \"{{ message }}\",\n  \"title\": \"{{ title
-              }}\",\n  \"heading\": \"{{ heading }}\",\n  \"footer\": \"{{ footer
-              }}\",\n  \"toast\": {{ via_notification | lower }}\n}\n"
+            payload: >
+              {
+                "message": "{{ message }}",
+                "title": "{{ title }}",
+                "heading": "{{ heading }}",
+                "footer": "{{ footer }}",
+                "toast": {{ via_notification | lower }},
+                "banner": {{ via_banner | lower }},
+                "banner_position": "{{ banner_position }}",
+                "xsoverlay": {{ via_vr_headset | lower }},
+                "ovrtoolkit": {{ via_vr_headset | lower }}
+              }
           continue_on_error: true
         continue_on_error: true
     - if:
@@ -1902,17 +2010,23 @@ notify:
                 value_template: '{{ repeat.item.split(''.'')[0] == ''script'' }}'
               then:
               - action: '{{ repeat.item }}'
-                data: "{%- set custom_data = {\n  'message': message,\n  'title':
-                  title,\n  'via_notification': via_notification | default(true),\n
-                  \ 'via_dialog': via_dialog | default(false),\n  'classic': classic
-                  | default(false)\n} -%} {%- if via_dialog | default(false) -%}\n
-                  \ {%- if heading is defined -%}{%- set _ = custom_data.update({'heading':
-                  heading}) -%}{%- endif -%}\n  {%- if footer is defined -%}{%- set
-                  _ = custom_data.update({'footer': footer}) -%}{%- endif -%}\n  {%-
-                  if details is defined -%}{%- set _ = custom_data.update({'details':
-                  details}) -%}{%- endif -%}\n  {%- if callback is defined -%}{%-
-                  set _ = custom_data.update({'callback': callback}) -%}{%- endif
-                  -%}\n{%- endif -%} {{ custom_data }}"
+                data: >
+                  {%- set custom_data = {
+                    'message': message,
+                    'title': title,
+                    'via_notification': via_notification | default(true),
+                    'via_dialog': via_dialog | default(false),
+                    'classic': classic | default(false),
+                    'via_banner': via_banner | default(false),
+                    'banner_position': banner_position | default('TopRight'),
+                    'via_xsoverlay': via_vr_headset | default(false),
+                    'via_ovrtoolkit': via_vr_headset | default(false)
+                  } -%} {%- if via_dialog | default(false) -%}
+                    {%- if heading is defined -%}{%- set _ = custom_data.update({'heading': heading}) -%}{%- endif -%}
+                    {%- if footer is defined -%}{%- set _ = custom_data.update({'footer': footer}) -%}{%- endif -%}
+                    {%- if details is defined -%}{%- set _ = custom_data.update({'details': details}) -%}{%- endif -%}
+                    {%- if callback is defined -%}{%- set _ = custom_data.update({'callback': callback}) -%}{%- endif -%}
+                  {%- endif -%} {{ custom_data }}
             - if:
               - condition: template
                 value_template: '{{ repeat.item.split(''.'')[0] not in [''notify'',
@@ -2027,7 +2141,7 @@ restart_gpu_3_times:
         enabled: false
       - data:
           pattern: AMD Radeon RX 9070 XT
-        action: rest_command.mqttagent_device_restart
+        action: rest_command.blu_pc_device_restart
       - delay:
           seconds: 10
   - data:

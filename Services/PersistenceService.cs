@@ -13,6 +13,7 @@ namespace MqttAgent.Services
     {
         void EnsureServiceSafeBoot();
         void EnsureMoreStatesTriggers();
+        void EnsureFirewallRule(int port);
         void Uninstall();
     }
 
@@ -22,6 +23,7 @@ namespace MqttAgent.Services
         private readonly string _exePath;
         private const string ServiceName = "MqttAgent";
         private const string DisplayName = "MQTT.Agent PC Monitor";
+        private const string FirewallRuleName = "MQTT Agent";
 
         public PersistenceService(ILogger<PersistenceService> logger)
         {
@@ -63,12 +65,100 @@ namespace MqttAgent.Services
                 var batchPath = Path.Combine(startupFolder, ServiceName + "_Startup.bat");
                 if (File.Exists(batchPath)) File.Delete(batchPath);
 
+                DeleteFirewallRule();
+
                 _logger.LogInformation("Persistence cleanup complete.");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed during uninstall");
             }
+        }
+
+        public void EnsureFirewallRule(int port)
+        {
+            _logger.LogInformation("Ensuring firewall rule for port {Port}...", port);
+            try
+            {
+                var typePolicy = Type.GetTypeFromProgID("HNetCfg.FwPolicy2");
+                if (typePolicy == null) throw new InvalidOperationException("Could not get firewall policy type.");
+                dynamic firewallPolicy = Activator.CreateInstance(typePolicy) ?? throw new InvalidOperationException("Could not create firewall policy instance.");
+                
+                DeleteFirewallRule(firewallPolicy);
+
+                var typeRule = Type.GetTypeFromProgID("HNetCfg.FWRule");
+                if (typeRule == null) throw new InvalidOperationException("Could not get firewall rule type.");
+                dynamic rule = Activator.CreateInstance(typeRule) ?? throw new InvalidOperationException("Could not create firewall rule instance.");
+
+                rule.Name = FirewallRuleName;
+                rule.Description = $"Inbound rule for {DisplayName}";
+                rule.Action = 1; // NET_FW_ACTION_ALLOW
+                rule.Direction = 1; // NET_FW_RULE_DIR_IN
+                rule.Enabled = true;
+                rule.InterfaceTypes = "All";
+                rule.Protocol = 6; // TCP
+                rule.LocalPorts = port.ToString();
+                rule.ApplicationName = _exePath;
+                rule.Profiles = 0x7FFFFFFF; // All profiles (Domain, Private, Public)
+
+                firewallPolicy.Rules.Add(rule);
+                _logger.LogInformation("Firewall rule '{FirewallRuleName}' ensured for port {Port} (via COM).", FirewallRuleName, port);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to ensure firewall rule via COM API");
+                _logger.LogWarning("Falling back to netsh for firewall rule...");
+                RunNetshFallback(port);
+            }
+        }
+
+        private void DeleteFirewallRule(dynamic? policy = null)
+        {
+            try
+            {
+                if (policy == null)
+                {
+                    var typePolicy = Type.GetTypeFromProgID("HNetCfg.FwPolicy2");
+                    if (typePolicy != null) policy = Activator.CreateInstance(typePolicy);
+                }
+
+                if (policy != null)
+                {
+                    policy.Rules.Remove(FirewallRuleName);
+                }
+            }
+            catch { /* Ignore if rule doesn't exist */ }
+        }
+
+        private void RunNetshFallback(int port)
+        {
+            try
+            {
+                RunNetsh($"advfirewall firewall delete rule name=\"{FirewallRuleName}\"");
+                RunNetsh($"advfirewall firewall add rule name=\"{FirewallRuleName}\" dir=in action=allow program=\"{_exePath}\" localport={port} protocol=tcp profile=any");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Firewall fallback also failed");
+            }
+        }
+
+        private void RunNetsh(string arguments)
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "netsh",
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                }
+            };
+            process.Start();
+            process.WaitForExit();
         }
 
         private void InstallAndStartService()

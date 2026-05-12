@@ -9,25 +9,25 @@ pc_notify_toast:
     {
       "message": "{{ message }}",
       "title": "{{ title | default('Notification') }}",
-      "useToast": true
+      "toast": true
     }
 
-mqttagent_notify:
+blu_pc_notify:
   url: "http://192.168.2.50:23482/api/notify"
   method: POST
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
-    content_type: "application/json"
+  content_type: "application/json"
   payload: >
     {{ payload | to_json }}
 
-mqttagent_screenshot:
+blu_pc_screenshot:
   url: "http://192.168.2.50:23482/api/screenshot"
   method: GET
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
 
-mqttagent_toggle_block:
+blu_pc_toggle_block:
   url: "http://192.168.2.50:23482/api/toggle-block"
   method: POST
   headers:
@@ -35,7 +35,7 @@ mqttagent_toggle_block:
   content_type: "application/json"
   payload: '{"enabled": {{ enabled | lower }}}'
 
-mqttagent_toggle_force:
+blu_pc_toggle_force:
   url: "http://192.168.2.50:23482/api/toggle-force"
   method: POST
   headers:
@@ -43,7 +43,7 @@ mqttagent_toggle_force:
   content_type: "application/json"
   payload: '{"enabled": {{ enabled | lower }}}'
 
-mqttagent_execute:
+blu_pc_execute:
   url: "http://192.168.2.50:23482/api/execute"
   method: POST
   headers:
@@ -51,23 +51,23 @@ mqttagent_execute:
   content_type: "application/json"
   payload: '{"action": {{ action_json | to_json }}}'
 
-mqttagent_lock:
+blu_pc_lock:
   url: "http://192.168.2.50:23482/api/execute"
   method: POST
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
   content_type: "application/json"
-  payload: '{"action": "{\"action\": \"lock\"}"}'
+  payload: '{"action": "lock"}'
 
-mqttagent_shutdown:
+blu_pc_shutdown:
   url: "http://192.168.2.50:23482/api/execute"
   method: POST
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
   content_type: "application/json"
-  payload: '{"action": "{\"action\": \"shutdown\"}"}'
+  payload: '{"action": "shutdown"}'
 
-mqttagent_start_process:
+blu_pc_start_process:
   url: "http://192.168.2.50:23482/api/start-process"
   method: POST
   headers:
@@ -81,7 +81,7 @@ mqttagent_start_process:
       "waitForExit": {{ wait | default(false) | lower }}
     }
 
-mqttagent_device_enable:
+blu_pc_device_enable:
   url: "http://192.168.2.50:23482/api/device-enable"
   method: POST
   headers:
@@ -89,7 +89,7 @@ mqttagent_device_enable:
   content_type: "application/json"
   payload: '{"pattern": "{{ pattern }}"}'
 
-mqttagent_device_disable:
+blu_pc_device_disable:
   url: "http://192.168.2.50:23482/api/device-disable"
   method: POST
   headers:
@@ -97,10 +97,71 @@ mqttagent_device_disable:
   content_type: "application/json"
   payload: '{"pattern": "{{ pattern }}"}'
 
-mqttagent_device_restart:
+blu_pc_device_restart:
   url: "http://192.168.2.50:23482/api/device-restart"
   method: POST
   headers:
     Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
   content_type: "application/json"
   payload: '{"pattern": "{{ pattern }}"}'
+
+blu_pc_logout:
+  url: "http://192.168.2.50:23482/api/execute"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: '{"action": "logout"}'
+
+blu_pc_sleep:
+  url: "http://192.168.2.50:23482/api/execute"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: '{"action": "sleep"}'
+
+blu_pc_hibernate:
+  url: "http://192.168.2.50:23482/api/execute"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: '{"action": "hibernate"}'
+
+blu_pc_restart:
+  url: "http://192.168.2.50:23482/api/execute"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: '{"action": "restart"}'
+
+
+game_chat_notify:
+  url: "http://192.168.2.50:23482/api/notify"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: >
+    {
+      "message": "{{ message }}",
+      "title": "{{ title | default('Game Chat') }}",
+      "useBanner": true,
+      "bannerPosition": "BottomRight"
+    }
+
+game_hud_notify:
+  url: "http://192.168.2.50:23482/api/notify"
+  method: POST
+  headers:
+    Authorization: "Bearer 7f46fda81f4d4b51878cdf01aca45804"
+  content_type: "application/json"
+  payload: >
+    {
+      "message": "{{ message }}",
+      "title": "{{ title | default('Game HUD') }}",
+      "useBanner": true,
+      "bannerPosition": "TopCenter"
+    }

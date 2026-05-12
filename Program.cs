@@ -176,6 +176,7 @@ public static class Program
             if (install)
             {
                 persistence.EnsureServiceSafeBoot();
+                persistence.EnsureFirewallRule(port);
             }
             
             if (moreStates)

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using MqttAgent.Utils;
 using System.Drawing;
 using System.IO;
@@ -27,13 +28,14 @@ public class TrayApplicationContext : ApplicationContext
     public TrayApplicationContext(IServiceProvider services)
     {
         _services = services;
-        _token = "7f46fda81f4d4b51878cdf01aca45804";
-        _baseUrl = "http://localhost:23482";
+        _token = Config.Get("token", "-token", "MQTTAGENT_TOKEN") ?? "7f46fda81f4d4b51878cdf01aca45804";
+        var portStr = Config.Get("port", "MQTTAGENT_PORT") ?? "23482";
+        _baseUrl = $"http://localhost:{portStr}";
         _httpClient = new HttpClient();
         _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
         
         // Determine if we are running alongside an existing service
-        var port = 23482;
+        if (!int.TryParse(portStr, out var port)) port = 23482;
         try
         {
             var ipGlobalProperties = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties();
@@ -53,14 +55,15 @@ public class TrayApplicationContext : ApplicationContext
         Icon trayIcon;
         try
         {
-            string iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BlockShutdown.ico");
-            if (File.Exists(iconPath))
+            string exePath = Process.GetCurrentProcess().MainModule?.FileName ?? string.Empty;
+            if (!string.IsNullOrEmpty(exePath) && File.Exists(exePath))
             {
-                trayIcon = new Icon(iconPath);
+                trayIcon = Icon.ExtractAssociatedIcon(exePath) ?? SystemIcons.Application;
             }
             else
             {
-                trayIcon = SystemIcons.Application;
+                string iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BlockShutdown.ico");
+                trayIcon = File.Exists(iconPath) ? new Icon(iconPath) : SystemIcons.Application;
             }
         }
         catch

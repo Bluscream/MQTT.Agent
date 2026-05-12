@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>BlockShutdown.ico</ApplicationIcon>
-    <Version>1.0.18</Version>
+    <Version>1.0.19</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,7 +34,6 @@
     <ProjectReference Include=".references\ipc-mcp\.references\Modern-Windows-Message-Box-Generator\Source\CLI\Modern-Windows-Message-Box-Generator.CLI.csproj" />
     <ProjectReference Include=".references\ipc-mcp\.references\Modern-Windows-Message-Box-Generator\Source\Common\Modern-Windows-Message-Box-Generator.Common.csproj" />
     <ProjectReference Include=".references\ipc-mcp\.references\Modern-Windows-Message-Box-Generator\Source\UI\Modern-Windows-Message-Box-Generator.UI.csproj" />
-    <ProjectReference Include=".references\SoundSwitch.Banner\SoundSwitch.Banner.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -46,5 +45,7 @@
     </None>
   </ItemGroup>
 
+
 </Project>
+
 
