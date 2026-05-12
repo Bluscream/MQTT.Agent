@@ -81,36 +81,36 @@ public class ActionExecutorService : IHostedService
             {
                 case "start_process":
                     if (!root.HasValue) break;
-                    var exe = root.Value.GetProperty("executable").GetString();
-                    var args = root.Value.TryGetProperty("arguments", out var argProp) ? argProp.GetString() : null;
-                    var elevated = root.Value.TryGetProperty("elevated", out var elProp) ? elProp.GetBoolean() : false;
-                    var asUser = root.Value.TryGetProperty("as_user", out var usrProp) ? usrProp.GetString() : null;
+                    var exe = root.Value.GetStringOrDefault("executable");
+                    var startArgs = root.Value.GetStringOrDefault("arguments", "");
+                    var elevated = root.Value.GetBooleanOrDefault("elevated");
+                    var asUser = root.Value.GetStringOrDefault("as_user", null!);
                     if (!string.IsNullOrEmpty(exe))
                     {
-                        await _processService.StartProcess(exe, args, false, 30000, false, asUser, elevated);
+                        await _processService.StartProcess(exe, startArgs, false, 30000, false, asUser, elevated);
                     }
                     break;
-
+ 
                 case "shutdown":
                     _windowsService.Shutdown(false, _forceActionService.IsForceEnabled, 0, null);
                     break;
-
+ 
                 case "reboot":
                     _windowsService.Shutdown(true, _forceActionService.IsForceEnabled, 0, null);
                     break;
-
+ 
                 case "lock":
                     await _windowsService.Lock();
                     break;
-
+ 
                 case "logoff":
                     _windowsService.Logout(false, null, 0, _forceActionService.IsForceEnabled);
                     break;
-
+ 
                 case "login":
                     if (!root.HasValue) break;
-                    var user = root.Value.GetProperty("username").GetString();
-                    var pass = root.Value.GetProperty("password").GetString();
+                    var user = root.Value.GetStringOrDefault("username");
+                    var pass = root.Value.GetStringOrDefault("password");
                     if (!string.IsNullOrEmpty(user) && !string.IsNullOrEmpty(pass))
                     {
                         _logonRegistryService.Login(user, pass, "", false, false);
@@ -119,7 +119,7 @@ public class ActionExecutorService : IHostedService
                     
                 case "device_enable":
                     if (!root.HasValue) break;
-                    var devEn = root.Value.GetProperty("device_id").GetString();
+                    var devEn = root.Value.GetStringOrDefault("device_id");
                     if (!string.IsNullOrEmpty(devEn))
                     {
                         await _deviceService.ToggleDevices(new[] { devEn }, null);
@@ -128,7 +128,7 @@ public class ActionExecutorService : IHostedService
                     
                 case "device_disable":
                     if (!root.HasValue) break;
-                    var devDis = root.Value.GetProperty("device_id").GetString();
+                    var devDis = root.Value.GetStringOrDefault("device_id");
                     if (!string.IsNullOrEmpty(devDis))
                     {
                         await _deviceService.ToggleDevices(null, new[] { devDis });
@@ -137,33 +137,33 @@ public class ActionExecutorService : IHostedService
                     
                 case "device_restart":
                     if (!root.HasValue) break;
-                    var devRes = root.Value.GetProperty("device_id").GetString();
+                    var devRes = root.Value.GetStringOrDefault("device_id");
                     if (!string.IsNullOrEmpty(devRes))
                     {
                         await _deviceService.ToggleDevices(new[] { devRes }, new[] { devRes });
                     }
                     break;
-
+ 
                 case "messagebox":
                     if (!root.HasValue) break;
-                    var mbTitle = root.Value.TryGetProperty("title", out var tProp) ? tProp.GetString() : "Notification";
-                    var mbMsg = root.Value.TryGetProperty("message", out var msgProp) ? msgProp.GetString() : "";
+                    var mbTitle = root.Value.GetStringOrDefault("title", "Notification");
+                    var mbMsg = root.Value.GetStringOrDefault("message");
                     var mbSid = _processService.GetActiveConsoleSessionId();
                     var helperPath = Process.GetCurrentProcess().MainModule?.FileName;
                     if (!string.IsNullOrEmpty(helperPath))
                     {
-                        await _processService.StartProcess(helperPath, $"--messagebox --title \"{mbTitle}\" --message \"{mbMsg}\"", asUser: mbSid.ToString(), windowStyle: "hidden");
+                        await _processService.StartProcess(helperPath, $"--messagebox --title {mbTitle.Quote()} --message {mbMsg.Quote()}", asUser: mbSid.ToString(), windowStyle: "hidden");
                     }
                     break;
-
+ 
                 case "banner":
                     if (!root.HasValue) break;
-                    var bMsg = root.Value.TryGetProperty("message", out var bMsgProp) ? bMsgProp.GetString() : "";
+                    var bMsg = root.Value.GetStringOrDefault("message");
                     var bSid = _processService.GetActiveConsoleSessionId();
                     var bannerPath = Process.GetCurrentProcess().MainModule?.FileName;
                     if (!string.IsNullOrEmpty(bannerPath))
                     {
-                        await _processService.StartProcess(bannerPath, $"--banner --message \"{bMsg}\"", asUser: bSid.ToString(), windowStyle: "hidden");
+                        await _processService.StartProcess(bannerPath, $"--banner --message {bMsg.Quote()}", asUser: bSid.ToString(), windowStyle: "hidden");
                     }
                     break;
 

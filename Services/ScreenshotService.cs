@@ -252,20 +252,16 @@ namespace MqttAgent.Services
                             // Resolution sample: "3440 X 1440"
                             // Left-Top sample: "0, 0"
                             
-                            var res = mmt.GetValueOrDefault("resolution") ?? mmt.GetValueOrDefault("Resolution") ?? "0 X 0";
-                            var resParts = res.Split('X', StringSplitOptions.TrimEntries);
-                            int width = 0, height = 0;
-                            if (resParts.Length == 2) { int.TryParse(resParts[0], out width); int.TryParse(resParts[1], out height); }
+                            var res = mmt.GetValueOrDefault("resolution") ?? mmt.GetValueOrDefault("Resolution");
+                            res.TryParseResolution(out int width, out int height);
  
-                            var pos = mmt.GetValueOrDefault("left-top") ?? mmt.GetValueOrDefault("Left-Top") ?? "0, 0";
-                            var posParts = pos.Split(',', StringSplitOptions.TrimEntries);
-                            int x = 0, y = 0;
-                            if (posParts.Length == 2) { int.TryParse(posParts[0], out x); int.TryParse(posParts[1], out y); }
+                            var pos = mmt.GetValueOrDefault("left-top") ?? mmt.GetValueOrDefault("Left-Top");
+                            pos.TryParsePosition(out int x, out int y);
  
                             result.Add(new
                             {
                                 index = result.Count,
-                                name = mmt.GetValueOrDefault("friendly_name") ?? mmt.GetValueOrDefault("name") ?? mmt.GetValueOrDefault("monitor_name") ?? mmt.GetValueOrDefault("short_monitor_id") ?? "Unknown",
+                                name = mmt.GetFriendlyMonitorName(),
                                 deviceName = mmt.GetValueOrDefault("name") ?? "",
                                 isPrimary = string.Equals(mmt.GetValueOrDefault("primary"), "Yes", StringComparison.OrdinalIgnoreCase) || string.Equals(mmt.GetValueOrDefault("Primary"), "Yes", StringComparison.OrdinalIgnoreCase),
                                 bounds = new { x, y, width, height }

@@ -48,16 +48,13 @@ public static class Program
         builder.Logging.ClearProviders();
         builder.Logging.AddSerilog();
 
-        // Extract args from Global
+        // Extract args and config from Global
         bool isTray = Global.IsTrayMode;
         bool isService = Global.IsServiceMode;
         
-        var token = builder.Configuration["MQTTAGENT_TOKEN"];
-        if (string.IsNullOrEmpty(token)) token = builder.Configuration["MqttAgent:Token"];
-        if (string.IsNullOrEmpty(token)) token = builder.Configuration["token"];
-        if (string.IsNullOrEmpty(token)) token = args.FirstOrDefault(a => a.StartsWith("-token:"))?.Split(':')[1];
-        if (string.IsNullOrEmpty(token)) token = args.SkipWhile(a => a != "-token").Skip(1).FirstOrDefault();
-
+        var token = Global.GetEnvOrConfig(builder.Configuration, "Token");
+        if (string.IsNullOrEmpty(token)) token = Global.GetArgValue("-token");
+        
         if (string.IsNullOrEmpty(token))
         {
             Log.Fatal("CRITICAL ERROR: No MQTTAGENT_TOKEN provided. The application cannot start without an authentication token for security reasons. Please set the MQTTAGENT_TOKEN environment variable or provide it via appsettings.json.");
@@ -65,9 +62,7 @@ public static class Program
         }
 
         // Configure Kestrel
-        var portStr = builder.Configuration["MQTTAGENT_PORT"];
-        if (string.IsNullOrEmpty(portStr)) portStr = builder.Configuration["MqttAgent:Port"];
-        if (string.IsNullOrEmpty(portStr)) portStr = builder.Configuration["port"] ?? builder.Configuration["PORT"] ?? "23482";
+        var portStr = Global.GetEnvOrConfig(builder.Configuration, "Port", "23482");
         var port = int.Parse(portStr);
         
         builder.WebHost.ConfigureKestrel(options =>
@@ -77,23 +72,11 @@ public static class Program
 
         builder.Services.Configure<MqttAgent.Models.MqttOptions>(options =>
         {
-            var section = builder.Configuration.GetSection("MqttAgent:Mqtt");
-            
-            options.Ip = section["Ip"] ?? string.Empty;
-            if (string.IsNullOrEmpty(options.Ip)) options.Ip = builder.Configuration["MQTT_IP"] ?? "127.0.0.1";
-
-            var portVal = section["Port"];
-            if (string.IsNullOrEmpty(portVal)) portVal = builder.Configuration["MQTT_PORT"];
-            options.Port = int.TryParse(portVal, out int p) ? p : 1883;
-
-            options.User = section["User"] ?? string.Empty;
-            if (string.IsNullOrEmpty(options.User)) options.User = builder.Configuration["MQTT_USER"] ?? string.Empty;
-
-            options.Password = section["Password"] ?? string.Empty;
-            if (string.IsNullOrEmpty(options.Password)) options.Password = builder.Configuration["MQTT_PW"] ?? string.Empty;
-
-            options.EntityId = section["EntityId"] ?? string.Empty;
-            if (string.IsNullOrEmpty(options.EntityId)) options.EntityId = builder.Configuration["MQTT_ENTITY_ID"] ?? "blu-pc";
+            options.Ip = Global.GetEnvOrConfig(builder.Configuration, "Mqtt:Ip", "127.0.0.1");
+            options.Port = int.Parse(Global.GetEnvOrConfig(builder.Configuration, "Mqtt:Port", "1883"));
+            options.User = Global.GetEnvOrConfig(builder.Configuration, "Mqtt:User");
+            options.Password = Global.GetEnvOrConfig(builder.Configuration, "Mqtt:Password");
+            options.EntityId = Global.GetEnvOrConfig(builder.Configuration, "Mqtt:EntityId", Global.SafeMachineName);
         });
 
         builder.Services.AddSingleton(new TokenService(token));

@@ -380,23 +380,10 @@ namespace MqttAgent.Services
         {
             try
             {
-                float cpuUsage = 0;
-                float gpuUsage = 0;
-
-                foreach (var hardware in _computer.Hardware)
-                {
-                    hardware.Update();
-                    if (hardware.HardwareType == HardwareType.Cpu)
-                    {
-                        var sensor = hardware.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Load && s.Name == "CPU Total");
-                        if (sensor != null) cpuUsage = sensor.Value ?? 0;
-                    }
-                    else if (hardware.HardwareType == HardwareType.GpuNvidia || hardware.HardwareType == HardwareType.GpuAmd || hardware.HardwareType == HardwareType.GpuIntel)
-                    {
-                        var sensor = hardware.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Load && s.Name == "GPU Core");
-                        if (sensor != null) gpuUsage = Math.Max(gpuUsage, sensor.Value ?? 0);
-                    }
-                }
+                foreach (var hardware in _computer.Hardware) hardware.Update();
+                
+                float cpuUsage = _computer.Hardware.GetMaxSensorValue(HardwareType.Cpu, SensorType.Load, "CPU Total");
+                float gpuUsage = _computer.Hardware.GetMaxGpuSensorValue(SensorType.Load, "GPU Core");
 
                 if (_isCurrentlyIdle)
                 {
@@ -467,11 +454,11 @@ namespace MqttAgent.Services
                     {
                         try
                         {
-                            using (var searcher = new System.Management.ManagementObjectSearcher("SELECT PartNumber FROM Win32_PhysicalMemory"))
+                            using (var searcher = new ManagementObjectSearcher("SELECT PartNumber FROM Win32_PhysicalMemory"))
                             {
                                 var sticks = searcher.Get()
-                                    .Cast<System.Management.ManagementObject>()
-                                    .Select(obj => obj["PartNumber"]?.ToString()?.Trim())
+                                    .Cast<ManagementObject>()
+                                    .Select(obj => obj.GetPropertyString("PartNumber")?.Trim())
                                     .Where(s => !string.IsNullOrWhiteSpace(s))
                                     .OrderBy(s => s)
                                     .ToList();
@@ -562,22 +549,18 @@ namespace MqttAgent.Services
                     {
                         try
                         {
-                            using var searcher = new System.Management.ManagementObjectSearcher("SELECT AdapterRAM FROM Win32_VideoController WHERE Name IS NOT NULL");
-                            foreach (var obj in searcher.Get())
+                            using var searcher = new ManagementObjectSearcher("SELECT AdapterRAM FROM Win32_VideoController WHERE Name IS NOT NULL");
+                            foreach (var obj in (ManagementObjectCollection)searcher.Get())
                             {
-                                var adapterRam = obj["AdapterRAM"];
-                                if (adapterRam != null)
+                                var totalBytes = obj.GetPropertyLong("AdapterRAM");
+                                if (totalBytes > 0)
                                 {
-                                    var totalBytes = Convert.ToInt64(adapterRam);
-                                    if (totalBytes > 0)
-                                    {
-                                        total = totalBytes / (1024.0f * 1024.0f * 1024.0f); // bytes -> GB
-                                        _cachedGpuTotalVramGb = total;
-                                        free = total - used;
-                                        if (free < 0) free = 0;
-                                        _logger.LogDebug("GPU VRAM total from WMI: {Total:F1} GB", total);
-                                        break;
-                                    }
+                                    total = totalBytes / (1024.0f * 1024.0f * 1024.0f); // bytes -> GB
+                                    _cachedGpuTotalVramGb = total;
+                                    free = total - used;
+                                    if (free < 0) free = 0;
+                                    _logger.LogDebug("GPU VRAM total from WMI: {Total:F1} GB", total);
+                                    break;
                                 }
                             }
                         }

@@ -24,8 +24,7 @@ public class ActionCenterPollerService : IHostedService
     {
         try
         {
-            bool isTray = Environment.CommandLine.Contains("-tray");
-            if (isTray)
+            if (Global.IsTrayMode)
             {
                 var port = 23482;
                 try

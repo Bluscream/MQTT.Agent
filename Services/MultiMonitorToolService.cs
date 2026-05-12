@@ -160,7 +160,7 @@ public class MultiMonitorToolService
                                 { "status", d.Status },
                                 { "present", d.Present.ToString() }
                             };
-                            dict["friendly_name"] = GetFriendlyName(dict);
+                            dict["friendly_name"] = dict.GetFriendlyMonitorName();
                             return dict;
                         });
                         return JsonSerializer.Serialize(mapped, new JsonSerializerOptions { WriteIndented = true });
@@ -242,7 +242,7 @@ public class MultiMonitorToolService
                     .Where(e => !string.IsNullOrWhiteSpace(e.Value))
                     .ToDictionary(e => e.Name.LocalName, e => e.Value);
                 
-                dict["friendly_name"] = GetFriendlyName(dict);
+                dict["friendly_name"] = dict.GetFriendlyMonitorName();
                 return dict;
             }).ToList();
 
@@ -253,19 +253,6 @@ public class MultiMonitorToolService
             Console.WriteLine($"[MultiMonitorToolService] Error parsing XML to JSON: {ex.Message}");
             return "[]";
         }
-    }
-
-    private string GetFriendlyName(Dictionary<string, string> dict)
-    {
-        if (dict.TryGetValue("monitor_name", out var val) && !string.IsNullOrWhiteSpace(val)) return val;
-        if (dict.TryGetValue("short_monitor_id", out val) && !string.IsNullOrWhiteSpace(val)) return val;
-        if (dict.TryGetValue("monitor_serial_number", out val) && !string.IsNullOrWhiteSpace(val)) return val;
-        if (dict.TryGetValue("monitor_string", out val) && !string.IsNullOrWhiteSpace(val)) return val;
-        if (dict.TryGetValue("name", out val) && !string.IsNullOrWhiteSpace(val)) 
-        {
-            return val.Replace("\\","").Replace(".","");
-        }
-        return "Unknown Monitor";
     }
 
     // Wrapper methods for common commands

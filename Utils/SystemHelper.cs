@@ -178,7 +178,7 @@ namespace MqttAgent.Utils
                 var toRemove = new List<IntPtr>();
                 foreach (var fw in FlashingWindows)
                 {
-                    if (!NativeMethods.IsWindowVisible(fw))
+                    if (!fw.IsVisible())
                     {
                         toRemove.Add(fw);
                     }
@@ -196,11 +196,9 @@ namespace MqttAgent.Utils
             {
                 NativeMethods.EnumWindows((hWnd, lParam) =>
                 {
-                    if (NativeMethods.IsWindowVisible(hWnd))
+                    if (hWnd.IsVisible())
                     {
-                        StringBuilder sb = new StringBuilder(256);
-                        NativeMethods.GetClassName(hWnd, sb, sb.Capacity);
-                        string className = sb.ToString();
+                        string className = hWnd.GetWindowClassName();
                         if (className == "#32770") // Dialog box
                         {
                             info = GetWindowInfo(hWnd);
@@ -211,31 +209,32 @@ namespace MqttAgent.Utils
                     return true;
                 }, IntPtr.Zero);
             }
-            catch
-            {
-                // Ignore
-            }
+            catch { }
+
             return info;
         }
 
-        private static MqttAgent.Models.NeedsAttentionInfo GetWindowInfo(IntPtr hWnd)
+        public static MqttAgent.Models.NeedsAttentionInfo GetWindowInfo(IntPtr hWnd)
         {
             var info = new MqttAgent.Models.NeedsAttentionInfo();
             
-            StringBuilder sbText = new StringBuilder(256);
-            NativeMethods.GetWindowText(hWnd, sbText, sbText.Capacity);
-            info.WindowName = sbText.ToString();
+            info.WindowName = hWnd.GetWindowTitle();
+            info.ClassName = hWnd.GetWindowClassName();
 
-            uint pid;
-            NativeMethods.GetWindowThreadProcessId(hWnd, out pid);
-            info.ProcessId = (int)pid;
-            try
+            if (hWnd.TryGetProcess(out var process) && process != null)
             {
-                using var proc = System.Diagnostics.Process.GetProcessById((int)pid);
-                info.ProcessName = proc.ProcessName;
-                info.CommandLine = proc.TryGetCommandLine();
+                info.ProcessName = process.ProcessName;
+                info.ProcessId = process.Id;
+                
+                if (process.TryGetCommandLine(out var cmdLine))
+                {
+                    info.CommandLine = cmdLine;
+                }
             }
-            catch { info.ProcessName = "Unknown"; }
+            else
+            {
+                info.ProcessName = "Unknown";
+            }
 
             return info;
         }

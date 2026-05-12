@@ -1,18 +1,14 @@
 using System;
+using System.Linq;
+using Microsoft.Extensions.Configuration;
 
 namespace MqttAgent.Utils
 {
     public static class Global
     {
         public static string MachineName { get; } = Environment.MachineName;
-        
-        public static string UniqueId { get; } = Environment.MachineName.ToLowerInvariant();
-        
-        public static string SafeMachineName { get; } = Environment.MachineName.ToLowerInvariant()
-            .Replace(" ", "_")
-            .Replace("-", "_")
-            .Replace("\\", "")
-            .Replace(".", "");
+        public static string SafeMachineName { get; } = Environment.MachineName.ToSafeMachineName();
+        public static string UniqueId => SafeMachineName;
 
         public static class Args
         {
@@ -46,7 +42,22 @@ namespace MqttAgent.Utils
         public static bool IsAdmin { get; } = new System.Security.Principal.WindowsPrincipal(
             System.Security.Principal.WindowsIdentity.GetCurrent()).IsInRole(
             System.Security.Principal.WindowsBuiltInRole.Administrator);
+        
+        public static string? GetArgValue(string arg)
+        {
+            var index = Array.IndexOf(_args, arg.ToLowerInvariant());
+            if (index >= 0 && index < _args.Length - 1) return _args[index + 1];
+            
+            var prefixed = _args.FirstOrDefault(a => a.StartsWith($"{arg.ToLowerInvariant()}:"));
+            return prefixed?.Split(':', 2).LastOrDefault();
+        }
 
-        private static bool HasArg(string arg) => _args.Contains(arg) || _commandLine.Contains(arg);
+        public static string GetEnvOrConfig(IConfiguration config, string key, string? defaultValue = null)
+        {
+            var envKey = key.ToUpperInvariant().Replace(":", "_");
+            return config[envKey] ?? config[$"MqttAgent:{key}"] ?? config[key.ToLowerInvariant()] ?? defaultValue ?? string.Empty;
+        }
+
+        private static bool HasArg(string arg) => _args.Contains(arg.ToLowerInvariant()) || _commandLine.Contains(arg.ToLowerInvariant());
     }
 }
