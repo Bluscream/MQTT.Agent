@@ -7,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>BlockShutdown.ico</ApplicationIcon>
-    <Version>1.0.15</Version>
+    <Version>1.0.16</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -36,6 +36,7 @@
   </ItemGroup>
 
 </Project>
+
 
 
 

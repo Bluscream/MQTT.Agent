@@ -40,7 +40,18 @@ public class ProcessService
                 }
             };
 
-            return NativeMethods.AdjustTokenPrivileges(hToken, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero);
+            var result = NativeMethods.AdjustTokenPrivileges(hToken, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero);
+            var error = Marshal.GetLastWin32Error();
+            if (!result || error != 0)
+            {
+                Console.WriteLine($"[ProcessService] AdjustTokenPrivileges({privilegeName}) Result: {result}, Error: {error}");
+            }
+            return result && error == 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ProcessService] EnablePrivilege Exception: {ex.Message}");
+            return false;
         }
         finally
         {
