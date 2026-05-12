@@ -43,6 +43,7 @@ namespace MqttAgent.Services
         private bool _isCurrentlyIdle = false;
         private DateTime _needsAttentionClearTime = DateTime.MaxValue;
         private bool _isCurrentlyNeedsAttention = false;
+        private MqttAgent.Models.NeedsAttentionInfo? _lastAttentionInfo;
         private static readonly HttpClient _httpClient = new HttpClient();
         private float? _cachedGpuTotalVramGb = null;
 
@@ -254,10 +255,13 @@ namespace MqttAgent.Services
             }
         }
 
+
+
         private async Task UpdateState()
         {
             string state = "On";
             bool moreStates = Global.IsMoreStatesEnabled;
+            MqttAgent.Models.NeedsAttentionInfo? attentionInfo = null;
 
             if (SystemHelper.IsSafeMode())
             {
@@ -287,7 +291,7 @@ namespace MqttAgent.Services
             {
                 state = "Logged out";
             }
-            else if (moreStates && CheckNeedsAttention())
+            else if (moreStates && (attentionInfo = GetAttentionInfo()) != null)
             {
                 state = "Needs attention";
             }
@@ -296,32 +300,58 @@ namespace MqttAgent.Services
                 state = "Idle";
             }
 
-            if (state == _lastState)
+            if (state == _lastState && state != "Needs attention")
             {
                 // Periodically update attributes anyway
                 await ReportAttributes();
                 return;
             }
 
+            // If it was already "Needs attention" but the window changed, we still want a new event
+            if (state == _lastState && state == "Needs attention")
+            {
+                if (attentionInfo?.WindowName == _lastAttentionInfo?.WindowName && attentionInfo?.ProcessName == _lastAttentionInfo?.ProcessName)
+                {
+                    await ReportAttributes();
+                    return;
+                }
+            }
+
             _logger.LogInformation("State transition: {Old} -> {New}", _lastState, state);
             _lastState = state;
+            _lastAttentionInfo = attentionInfo;
             
             var uniqueId = _mqtt.UniqueId;
             var stateTopic = $"homeassistant/select/{uniqueId}/state";
             await _mqtt.EnqueueAsync(stateTopic, state, true);
 
-            await ReportRichEvent($"State changed to {state}", "state_change", new { 
+            object eventAttributes = new { 
                 old_state = _lastState,
                 new_state = state
-            });
+            };
+
+            if (state == "Needs attention" && attentionInfo != null)
+            {
+                eventAttributes = new {
+                    old_state = _lastState,
+                    new_state = state,
+                    window_name = attentionInfo.WindowName,
+                    process_name = attentionInfo.ProcessName,
+                    process_id = attentionInfo.ProcessId,
+                    command_line = attentionInfo.CommandLine,
+                    class_name = attentionInfo.ClassName
+                };
+            }
+
+            await ReportRichEvent($"State changed to {state}", "state_change", eventAttributes);
 
             await ReportAttributes();
         }
 
-        private bool CheckNeedsAttention()
+        private MqttAgent.Models.NeedsAttentionInfo? GetAttentionInfo()
         {
-            bool currentlyNeedsAttention = SystemHelper.IsNeedsAttention();
-            if (currentlyNeedsAttention)
+            var info = SystemHelper.GetNeedsAttentionInfo();
+            if (info != null)
             {
                 _isCurrentlyNeedsAttention = true;
                 _needsAttentionClearTime = DateTime.MaxValue;
@@ -334,8 +364,16 @@ namespace MqttAgent.Services
                     _isCurrentlyNeedsAttention = false;
                     _needsAttentionClearTime = DateTime.MaxValue;
                 }
+                else
+                {
+                    // Still in threshold, return last known info if possible?
+                    // Actually, if info is null but we're in threshold, we might just return null and the state will flip back to "On"
+                    // But the user said "CheckNeedsAttention" logic was to prevent flickering.
+                    // So if we're in threshold, we should probably stay in "Needs attention" state.
+                    return _lastAttentionInfo; 
+                }
             }
-            return _isCurrentlyNeedsAttention;
+            return info;
         }
 
         private bool CheckIdle()

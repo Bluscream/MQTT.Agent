@@ -133,7 +133,10 @@ public class MultiMonitorToolService
             await RunToolAsync(args.ToArray());
             
             if (!File.Exists(tempFile))
-                return $"Error: MultiMonitorTool did not create the output file at {tempFile}";
+            {
+                Console.WriteLine($"[MultiMonitorToolService] MultiMonitorTool did not create the output file at {tempFile}");
+                return useJson ? "[]" : $"Error: MultiMonitorTool did not create the output file at {tempFile}";
+            }
 
             var content = await File.ReadAllTextAsync(tempFile);
             File.Delete(tempFile);
@@ -171,7 +174,8 @@ public class MultiMonitorToolService
         }
         catch (Exception ex)
         {
-            return $"Error: {ex.Message}";
+            Console.WriteLine($"[MultiMonitorToolService] GetMonitorsAsync Exception: {ex.Message}");
+            return useJson ? "[]" : $"Error: {ex.Message}";
         }
     }
 
@@ -246,7 +250,8 @@ public class MultiMonitorToolService
         }
         catch (Exception ex)
         {
-            return $"Error parsing XML to JSON: {ex.Message}";
+            Console.WriteLine($"[MultiMonitorToolService] Error parsing XML to JSON: {ex.Message}");
+            return "[]";
         }
     }
 

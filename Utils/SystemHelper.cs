@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Management;
+using MqttAgent.Models;
 
 namespace MqttAgent.Utils
 {
@@ -166,10 +168,10 @@ namespace MqttAgent.Utils
 
 
         public static HashSet<IntPtr> FlashingWindows { get; } = new HashSet<IntPtr>();
-
-        public static bool IsNeedsAttention()
+        
+        public static MqttAgent.Models.NeedsAttentionInfo? GetNeedsAttentionInfo()
         {
-            bool needsAttention = false;
+            MqttAgent.Models.NeedsAttentionInfo? info = null;
             if (FlashingWindows.Count > 0)
             {
                 // Verify the flashing windows still exist
@@ -180,15 +182,16 @@ namespace MqttAgent.Utils
                     {
                         toRemove.Add(fw);
                     }
-                    else
+                    else if (info == null)
                     {
-                        needsAttention = true;
+                        info = GetWindowInfo(fw);
                     }
                 }
                 foreach (var r in toRemove) FlashingWindows.Remove(r);
             }
 
-            if (needsAttention) return true;
+            if (info != null) return info;
+
             try
             {
                 NativeMethods.EnumWindows((hWnd, lParam) =>
@@ -197,9 +200,11 @@ namespace MqttAgent.Utils
                     {
                         StringBuilder sb = new StringBuilder(256);
                         NativeMethods.GetClassName(hWnd, sb, sb.Capacity);
-                        if (sb.ToString() == "#32770")
+                        string className = sb.ToString();
+                        if (className == "#32770") // Dialog box
                         {
-                            needsAttention = true;
+                            info = GetWindowInfo(hWnd);
+                            info.ClassName = className;
                             return false; // Stop enumerating
                         }
                     }
@@ -210,7 +215,31 @@ namespace MqttAgent.Utils
             {
                 // Ignore
             }
-            return needsAttention;
+            return info;
         }
+
+        private static MqttAgent.Models.NeedsAttentionInfo GetWindowInfo(IntPtr hWnd)
+        {
+            var info = new MqttAgent.Models.NeedsAttentionInfo();
+            
+            StringBuilder sbText = new StringBuilder(256);
+            NativeMethods.GetWindowText(hWnd, sbText, sbText.Capacity);
+            info.WindowName = sbText.ToString();
+
+            uint pid;
+            NativeMethods.GetWindowThreadProcessId(hWnd, out pid);
+            info.ProcessId = (int)pid;
+            try
+            {
+                using var proc = System.Diagnostics.Process.GetProcessById((int)pid);
+                info.ProcessName = proc.ProcessName;
+                info.CommandLine = proc.TryGetCommandLine();
+            }
+            catch { info.ProcessName = "Unknown"; }
+
+            return info;
+        }
+
+        public static bool IsNeedsAttention() => GetNeedsAttentionInfo() != null;
     }
 }
