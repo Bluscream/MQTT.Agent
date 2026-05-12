@@ -144,7 +144,7 @@ public static class Extensions
     #endregion
 
     #region String Extensions
-    public static bool TryParseResolution(this string input, out int width, out int height)
+    public static bool TryParseResolution(this string? input, out int width, out int height)
     {
         width = 0; height = 0;
         if (string.IsNullOrWhiteSpace(input)) return false;
@@ -153,7 +153,7 @@ public static class Extensions
         return int.TryParse(parts[0], out width) && int.TryParse(parts[1], out height);
     }
 
-    public static bool TryParsePosition(this string input, out int x, out int y)
+    public static bool TryParsePosition(this string? input, out int x, out int y)
     {
         x = 0; y = 0;
         if (string.IsNullOrWhiteSpace(input)) return false;
@@ -162,33 +162,34 @@ public static class Extensions
         return int.TryParse(parts[0], out x) && int.TryParse(parts[1], out y);
     }
 
-    public static string ToSafeMachineName(this string machineName)
+    public static string ToSafeMachineName(this string? machineName)
     {
         if (string.IsNullOrWhiteSpace(machineName)) return "unknown_pc";
         return machineName.ToLowerInvariant().Replace(" ", "_").Replace("-", "_");
     }
 
-    public static string ToFriendlyName(this string text)
+    public static string ToFriendlyName(this string? text)
     {
-        if (string.IsNullOrWhiteSpace(text)) return text;
+        if (string.IsNullOrWhiteSpace(text)) return text ?? string.Empty;
         return Regex.Replace(text, "(?<=.)([A-Z])", " $1");
     }
 
-    public static string Quote(this string text) => $"\"{text}\"";
+    public static string Quote(this string? text) => $"\"{text ?? string.Empty}\"";
 
     public static string SurroundWith(this string text, string surrounds) => $"{surrounds}{text}{surrounds}";
 
     public static string SurroundWith(this string text, string starts, string ends) => $"{starts}{text}{ends}";
 
-    public static bool ToBoolean(this string input)
+    public static bool ToBoolean(this string? input)
     {
+        if (string.IsNullOrWhiteSpace(input)) return false;
         var trueValues = new[] { "true", "ok", "yes", "1", "y", "enabled", "on" };
         return trueValues.Contains(input.ToLowerInvariant());
     }
 
-    public static string ToEnvKey(this string key, string? prefix = null)
+    public static string ToEnvKey(this string? key, string? prefix = null)
     {
-        if (string.IsNullOrWhiteSpace(key)) return key;
+        if (string.IsNullOrWhiteSpace(key)) return key ?? string.Empty;
         var envKey = key.ToUpperInvariant().Replace("-", "_").Replace(":", "_");
         return prefix != null ? $"{prefix}{envKey}" : envKey;
     }
