@@ -45,6 +45,7 @@ namespace MqttAgent.Services
         private DateTime _needsAttentionClearTime = DateTime.MaxValue;
         private bool _isCurrentlyNeedsAttention = false;
         private static readonly HttpClient _httpClient = new HttpClient();
+        private float? _cachedGpuTotalVramGb = null;
 
         public SystemMonitorService(IMqttManager mqtt, IDiscoveryService discovery, ILogger<SystemMonitorService> logger)
         {
@@ -401,6 +402,8 @@ namespace MqttAgent.Services
             }
         }
 
+        private string? _cachedRamStickNames = null;
+
         private async Task ReportAttributes()
         {
             var uniqueId = _mqtt.UniqueId;
@@ -418,26 +421,35 @@ namespace MqttAgent.Services
                 if (hardware.HardwareType == HardwareType.Memory)
                 {
                     if (hwName == "Virtual Memory") continue;
-                    try
+                    
+                    if (_cachedRamStickNames != null)
                     {
-                        using (var searcher = new System.Management.ManagementObjectSearcher("SELECT PartNumber FROM Win32_PhysicalMemory"))
+                        hwName = _cachedRamStickNames;
+                    }
+                    else
+                    {
+                        try
                         {
-                            var sticks = searcher.Get()
-                                .Cast<System.Management.ManagementObject>()
-                                .Select(obj => obj["PartNumber"]?.ToString()?.Trim())
-                                .Where(s => !string.IsNullOrWhiteSpace(s))
-                                .OrderBy(s => s)
-                                .ToList();
-                            
-                            if (sticks.Any())
+                            using (var searcher = new System.Management.ManagementObjectSearcher("SELECT PartNumber FROM Win32_PhysicalMemory"))
                             {
-                                hwName = string.Join("\n", sticks);
+                                var sticks = searcher.Get()
+                                    .Cast<System.Management.ManagementObject>()
+                                    .Select(obj => obj["PartNumber"]?.ToString()?.Trim())
+                                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                                    .OrderBy(s => s)
+                                    .ToList();
+                                
+                                if (sticks.Any())
+                                {
+                                    _cachedRamStickNames = string.Join("\n", sticks);
+                                    hwName = _cachedRamStickNames;
+                                }
                             }
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to fetch RAM stick names from WMI.");
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to fetch RAM stick names from WMI.");
+                        }
                     }
                 }
 
@@ -503,29 +515,39 @@ namespace MqttAgent.Services
                 // For GPU: if we still don't have total/free, try WMI as fallback
                 if (isGpu && used > 0 && free <= 0 && total <= 0)
                 {
-                    try
+                    if (_cachedGpuTotalVramGb != null)
                     {
-                        using var searcher = new System.Management.ManagementObjectSearcher("SELECT AdapterRAM FROM Win32_VideoController WHERE Name IS NOT NULL");
-                        foreach (var obj in searcher.Get())
+                        total = _cachedGpuTotalVramGb.Value;
+                        free = total - used;
+                        if (free < 0) free = 0;
+                    }
+                    else
+                    {
+                        try
                         {
-                            var adapterRam = obj["AdapterRAM"];
-                            if (adapterRam != null)
+                            using var searcher = new System.Management.ManagementObjectSearcher("SELECT AdapterRAM FROM Win32_VideoController WHERE Name IS NOT NULL");
+                            foreach (var obj in searcher.Get())
                             {
-                                var totalBytes = Convert.ToInt64(adapterRam);
-                                if (totalBytes > 0)
+                                var adapterRam = obj["AdapterRAM"];
+                                if (adapterRam != null)
                                 {
-                                    total = totalBytes / (1024.0f * 1024.0f * 1024.0f); // bytes -> GB
-                                    free = total - used;
-                                    if (free < 0) free = 0;
-                                    _logger.LogDebug("GPU VRAM total from WMI: {Total:F1} GB", total);
-                                    break;
+                                    var totalBytes = Convert.ToInt64(adapterRam);
+                                    if (totalBytes > 0)
+                                    {
+                                        total = totalBytes / (1024.0f * 1024.0f * 1024.0f); // bytes -> GB
+                                        _cachedGpuTotalVramGb = total;
+                                        free = total - used;
+                                        if (free < 0) free = 0;
+                                        _logger.LogDebug("GPU VRAM total from WMI: {Total:F1} GB", total);
+                                        break;
+                                    }
                                 }
                             }
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to fetch GPU VRAM total from WMI.");
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to fetch GPU VRAM total from WMI.");
+                        }
                     }
                 }
 

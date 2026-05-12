@@ -38,6 +38,16 @@ namespace MqttAgent.Services
                 sw_version = "1.0.0"
             };
 
+            bool moreStates = Environment.CommandLine.Contains("--more-states") || Environment.CommandLine.Contains("/more-states");
+            var statusOptions = new System.Collections.Generic.List<string> {
+                "On", "Locked", "Logged out", "Updating", "Safe Mode", "Shutting Down", "Logging In", "Logging Out"
+            };
+            if (moreStates)
+            {
+                statusOptions.Add("Idle");
+                statusOptions.Add("Needs Attention");
+            }
+
             // 1. Status Select
             var statusConfig = new
             {
@@ -47,9 +57,7 @@ namespace MqttAgent.Services
                 state_topic = $"homeassistant/select/{deviceIdentifier}/state",
                 command_topic = $"homeassistant/select/{deviceIdentifier}/set",
                 json_attributes_topic = $"homeassistant/select/{deviceIdentifier}/attributes",
-                options = new[] { 
-                    "On", "Locked", "Logged out", "Updating", "Safe Mode", "Idle", "Shutting Down", "Logging In", "Logging Out", "Needs Attention"
-                },
+                options = statusOptions.ToArray(),
                 device = deviceInfo
             };
 
