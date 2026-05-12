@@ -191,7 +191,11 @@ public static class Program
         builder.Services.AddHostedService(p => p.GetRequiredService<ActionExecutorService>());
         builder.Services.AddHostedService(p => p.GetRequiredService<ForceActionService>());
         builder.Services.AddHostedService(p => p.GetRequiredService<ActionCenterPollerService>());
-        builder.Services.AddHostedService(p => p.GetRequiredService<CameraService>());
+        
+        if (Global.IsMoreStatesEnabled)
+        {
+            builder.Services.AddHostedService(p => p.GetRequiredService<CameraService>());
+        }
         
         // Always run MQTT if we aren't JUST a helper
         builder.Services.AddHostedService(p => (MqttManager)p.GetRequiredService<IMqttManager>());

@@ -150,7 +150,7 @@ if ($Install) {
 if ($Start) {
     Write-Host "Starting MQTT Agent Service via sudo..." -ForegroundColor Cyan
     sudo sc.exe start $ServiceName
-    Start-Sleep -Seconds 3
+    Start-Sleep -Seconds 5
     $TargetExe = if (Test-Path $DeployPath) { $DeployPath } else { $ExePath }
     Write-Host $TargetExe
     $StartArgs = @("-tray", "-token", $Token)
