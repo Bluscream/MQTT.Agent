@@ -52,55 +52,30 @@ public class SystemController : ControllerBase
             // Default to Toast if nothing specified
             if (!useToast && !useMessageBox && !useBanner && !useXSOverlay && !useOVRToolkit) useToast = true;
 
-            if (useToast)
+            var topic = $"homeassistant/notify/{machineName}/command";
+            var payload = JsonSerializer.Serialize(new ToastPayload
             {
-                var topic = $"homeassistant/notify/{machineName}/command";
-                var payload = JsonSerializer.Serialize(new ToastPayload
-                {
-                    Title = request.Title,
-                    Message = request.Message,
-                    Data = request.Data
-                });
-                await _mqtt.EnqueueAsync(topic, payload, false);
-            }
-
-            if (useMessageBox || useBanner || useXSOverlay || useOVRToolkit)
-            {
-                var sessionId = _processService.GetActiveConsoleSessionId();
-                var argsList = new List<string> { "--title", $"\"{request.Title}\"", "--message", $"\"{request.Message}\"" };
-                
-                if (!string.IsNullOrEmpty(request.Heading)) argsList.AddRange(new[] { "--heading", $"\"{request.Heading}\"" });
-                if (!string.IsNullOrEmpty(request.Footer)) argsList.AddRange(new[] { "--footer", $"\"{request.Footer}\"" });
-                if (!string.IsNullOrEmpty(request.Details)) argsList.AddRange(new[] { "--details", $"\"{request.Details}\"" });
-                if (!string.IsNullOrEmpty(request.Checkbox)) argsList.AddRange(new[] { "--checkbox", $"\"{request.Checkbox}\"" });
-                if (!string.IsNullOrEmpty(request.MessageBoxType)) argsList.AddRange(new[] { "--type", request.MessageBoxType });
-                if (!string.IsNullOrEmpty(request.MessageBoxIcon)) argsList.AddRange(new[] { "--icon", request.MessageBoxIcon });
-                if (request.Timeout > 0) argsList.AddRange(new[] { "--timeout", request.Timeout.ToString() });
-                if (request.Classic) argsList.Add("--classic");
-                if (!string.IsNullOrEmpty(request.Callback)) argsList.AddRange(new[] { "--callback", $"\"{request.Callback}\"" });
-                if (request.Flash) argsList.Add("--flash");
-                if (request.Ding) argsList.Add("--ding");
-                
-                // Add banner specific flags
-                if (useBanner) 
-                {
-                    argsList.Add("--banner");
-                    if (!string.IsNullOrEmpty(request.BannerPosition)) argsList.AddRange(new[] { "--pos", request.BannerPosition });
-                    // Duration for banner might map from timeout
-                    if (request.Timeout > 0) argsList.AddRange(new[] { "--duration", (request.Timeout / 1000).ToString() });
-                }
-
-                if (!string.IsNullOrEmpty(request.Image)) argsList.AddRange(new[] { "--image", $"\"{request.Image}\"" });
-                // Also support Image from Data
-                else if (request.Data?.Image != null) argsList.AddRange(new[] { "--image", $"\"{request.Data.Image}\"" });
-
-                if (useMessageBox) argsList.Add("--messagebox");
-                if (useXSOverlay) argsList.Add("--xsoverlay");
-                if (useOVRToolkit) argsList.Add("--ovrtoolkit");
-
-                var args = string.Join(" ", argsList);
-                await _processService.StartProcess(Process.GetCurrentProcess().MainModule?.FileName ?? "MqttAgent.exe", args, asUser: sessionId.ToString());
-            }
+                Title = request.Title,
+                Message = request.Message,
+                Data = request.Data,
+                UseMessageBox = useMessageBox,
+                UseBanner = useBanner,
+                BannerPosition = request.BannerPosition,
+                Heading = request.Heading,
+                Footer = request.Footer,
+                Details = request.Details,
+                Checkbox = request.Checkbox,
+                MessageBoxType = request.MessageBoxType,
+                MessageBoxIcon = request.MessageBoxIcon,
+                Timeout = request.Timeout,
+                Classic = request.Classic,
+                Callback = request.Callback,
+                Flash = request.Flash,
+                Ding = request.Ding,
+                UseXSOverlay = useXSOverlay,
+                UseOVRToolkit = useOVRToolkit
+            });
+            await _mqtt.EnqueueAsync(topic, payload, false);
 
             return Ok(new { status = "success" });
         }

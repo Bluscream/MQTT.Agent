@@ -46,4 +46,52 @@ public class ToastPayload
 
     [JsonPropertyName("data")]
     public NotificationData? Data { get; set; }
+
+    [JsonPropertyName("use_messagebox")]
+    public bool UseMessageBox { get; set; }
+
+    [JsonPropertyName("use_banner")]
+    public bool UseBanner { get; set; }
+
+    [JsonPropertyName("banner_position")]
+    public string? BannerPosition { get; set; }
+
+    [JsonPropertyName("heading")]
+    public string? Heading { get; set; }
+
+    [JsonPropertyName("footer")]
+    public string? Footer { get; set; }
+
+    [JsonPropertyName("details")]
+    public string? Details { get; set; }
+
+    [JsonPropertyName("checkbox")]
+    public string? Checkbox { get; set; }
+
+    [JsonPropertyName("type")]
+    public string? MessageBoxType { get; set; }
+
+    [JsonPropertyName("icon")]
+    public string? MessageBoxIcon { get; set; }
+
+    [JsonPropertyName("timeout")]
+    public int Timeout { get; set; }
+
+    [JsonPropertyName("classic")]
+    public bool Classic { get; set; }
+
+    [JsonPropertyName("callback")]
+    public string? Callback { get; set; }
+
+    [JsonPropertyName("flash")]
+    public bool Flash { get; set; }
+
+    [JsonPropertyName("ding")]
+    public bool Ding { get; set; }
+
+    [JsonPropertyName("use_xsoverlay")]
+    public bool UseXSOverlay { get; set; }
+
+    [JsonPropertyName("use_ovrtoolkit")]
+    public bool UseOVRToolkit { get; set; }
 }

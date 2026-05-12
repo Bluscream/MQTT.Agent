@@ -25,40 +25,15 @@ public static class SessionHelper
             NativeMethods.SetProcessDPIAware();
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
 
-            bool hasNotification = false;
 
             var tasks = new List<Task>();
 
-            if (args.Contains("--messagebox") || args.Contains("--toast") || args.Contains("--xsoverlay") || args.Contains("--ovrtoolkit"))
+            if (args.Contains("--messagebox") || args.Contains("--toast") || args.Contains("--xsoverlay") || args.Contains("--ovrtoolkit") || args.Contains("--banner"))
             {
-                Log("Invoking Modern Message Box logic...");
-                hasNotification = true;
-                tasks.Add(Task.Run(() => 
-                {
-                    try { Modern_Windows_Message_Box_Generator.CLI.Program.Main(args); }
-                    catch (Exception ex) { Log($"MessageBox Error: {ex.Message}"); }
-                }));
-            }
-
-            if (args.Contains("--banner"))
-            {
-                Log("Invoking SoundSwitch Banner logic...");
-                hasNotification = true;
-                var bannerArgs = args.ToList();
-                if (!bannerArgs.Contains("show")) bannerArgs.Insert(0, "show");
-                
-                tasks.Add(Task.Run(() => 
-                {
-                    try { SoundSwitch.Banner.CLI.Program.Main(bannerArgs.ToArray()); }
-                    catch (Exception ex) { Log($"Banner Error: {ex.Message}"); }
-                }));
-            }
-
-            if (hasNotification)
-            {
-                // Wait for all notifications to complete, but with a total timeout just in case
-                Task.WaitAll(tasks.ToArray(), TimeSpan.FromMinutes(5));
-                Log("All notifications completed or timed out.");
+                Log("Invoking Unified Notification logic...");
+                try { Modern_Windows_Message_Box_Generator.CLI.Program.Main(args).Wait(); }
+                catch (Exception ex) { Log($"Notification Error: {ex.Message}"); }
+                Log("Unified notification logic completed.");
                 return;
             }
 
