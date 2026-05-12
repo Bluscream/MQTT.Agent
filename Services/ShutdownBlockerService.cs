@@ -1,4 +1,5 @@
 using System;
+using MqttAgent.Utils;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -29,7 +30,7 @@ public class ShutdownBlockerService : IHostedService
         _mqttManager = mqttManager;
         _logger = logger;
         _services = services;
-        _machineName = Environment.MachineName.ToLowerInvariant().Replace(" ", "_").Replace("-", "_");
+        _machineName = Global.SafeMachineName;
         
         _stateTopic = $"homeassistant/switch/{_machineName}_block_shutdown/state";
         _commandTopic = $"homeassistant/switch/{_machineName}_block_shutdown/set";

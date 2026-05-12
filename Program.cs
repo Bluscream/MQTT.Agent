@@ -23,7 +23,7 @@ public static class Program
     [STAThread]
     public static async Task Main(string[] args)
     {
-        if (args.Contains("--screenshot-helper") || args.Contains("--messagebox") || args.Contains("--banner"))
+        if (Global.IsAnyHelper)
         {
             SessionHelper.Run(args);
             return;
@@ -48,9 +48,9 @@ public static class Program
         builder.Logging.ClearProviders();
         builder.Logging.AddSerilog();
 
-        // Extract args
-        bool isTray = args.Contains("-tray") || args.Contains("--tray") || args.Contains("/tray");
-        bool isService = args.Contains("-service") || args.Contains("--service") || args.Contains("/service");
+        // Extract args from Global
+        bool isTray = Global.IsTrayMode;
+        bool isService = Global.IsServiceMode;
         
         var token = builder.Configuration["MQTTAGENT_TOKEN"];
         if (string.IsNullOrEmpty(token)) token = builder.Configuration["MqttAgent:Token"];
@@ -123,17 +123,19 @@ public static class Program
         builder.Services.AddSingleton<ForceActionService>();
         builder.Services.AddSingleton<NotificationReceiverService>();
         builder.Services.AddSingleton<ActionExecutorService>();
+        builder.Services.AddSingleton<ActionCenterPollerService>();
+        builder.Services.AddSingleton<CameraService>();
 
         if (isService)
         {
             builder.Host.UseWindowsService();
         }
 
-        // Check for setup flags
-        bool install = args.Contains("--install") || args.Contains("/install");
-        bool uninstall = args.Contains("--uninstall") || args.Contains("/uninstall");
-        bool moreStates = args.Contains("--more-states") || args.Contains("/more-states");
-        bool isAdmin = new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent()).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        // Use Global setup flags
+        bool install = Global.IsInstall;
+        bool uninstall = Global.IsUninstall;
+        bool moreStates = Global.IsMoreStatesEnabled;
+        bool isAdmin = Global.IsAdmin;
 
         if ((install || uninstall || moreStates) && isAdmin)
         {
@@ -167,18 +169,18 @@ public static class Program
         }
 
         // Handle one-off state reporting
-        var entityState = args.FirstOrDefault(a => a.StartsWith("--entity-state"))?.Split(' ', 2).LastOrDefault();
-        if (string.IsNullOrEmpty(entityState)) entityState = args.SkipWhile(a => a != "--entity-state").Skip(1).FirstOrDefault();
+        var entityState = args.FirstOrDefault(a => a.StartsWith(Global.Args.EntityState))?.Split(' ', 2).LastOrDefault();
+        if (string.IsNullOrEmpty(entityState)) entityState = args.SkipWhile(a => a != Global.Args.EntityState).Skip(1).FirstOrDefault();
 
         if (!string.IsNullOrEmpty(entityState))
         {
-            var attributes = args.SkipWhile(a => a != "--entity-attributes").Skip(1).FirstOrDefault();
+            var attributes = args.SkipWhile(a => a != Global.Args.EntityAttributes).Skip(1).FirstOrDefault();
             
             using var appForState = builder.Build();
             var mqtt = appForState.Services.GetRequiredService<IMqttManager>();
             await mqtt.StartAsync(CancellationToken.None);
             
-            var machineName = Environment.MachineName.ToLowerInvariant();
+            var machineName = Global.UniqueId;
             var topic = $"homeassistant/select/{machineName}/state";
             await mqtt.EnqueueAsync(topic, entityState, true);
 
@@ -197,6 +199,8 @@ public static class Program
         builder.Services.AddHostedService(p => p.GetRequiredService<NotificationReceiverService>());
         builder.Services.AddHostedService(p => p.GetRequiredService<ActionExecutorService>());
         builder.Services.AddHostedService(p => p.GetRequiredService<ForceActionService>());
+        builder.Services.AddHostedService(p => p.GetRequiredService<ActionCenterPollerService>());
+        builder.Services.AddHostedService(p => p.GetRequiredService<CameraService>());
         
         // Always run MQTT if we aren't JUST a helper
         builder.Services.AddHostedService(p => (MqttManager)p.GetRequiredService<IMqttManager>());

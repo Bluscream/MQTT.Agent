@@ -80,7 +80,7 @@ namespace MqttAgent.Services
                 if (!ServiceHelper.IsServiceInstalled(ServiceName))
                 {
                     _logger.LogInformation("Service not found. Installing...");
-                    string binPath = $"\"{_exePath}\" --service";
+                    string binPath = $"\"{_exePath}\" {Global.Args.Service}";
                     ServiceHelper.InstallService(ServiceName, DisplayName, binPath);
                     _logger.LogInformation("Service installed successfully.");
                 }
@@ -178,7 +178,7 @@ namespace MqttAgent.Services
                     TaskDefinition td = ts.NewTask();
                     td.RegistrationInfo.Description = $"{ServiceName} {taskInfo.Name} (Managed)";
                     td.Triggers.Add(taskInfo.Trigger);
-                    td.Actions.Add(new ExecAction(_exePath, $"--entity-state \"{taskInfo.State}\" --entity-attributes \"{{\\\"source\\\":\\\"Task Scheduler\\\"}}\""));
+                    td.Actions.Add(new ExecAction(_exePath, $"{Global.Args.EntityState} \"{taskInfo.State}\" {Global.Args.EntityAttributes} \"{{\\\"source\\\":\\\"Task Scheduler\\\"}}\""));
                     
                     td.Settings.MultipleInstances = TaskInstancesPolicy.IgnoreNew;
                     td.Settings.ExecutionTimeLimit = TimeSpan.Zero;
@@ -203,7 +203,7 @@ namespace MqttAgent.Services
                 using var key = Registry.LocalMachine.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\RunOnce", true);
                 if (key != null)
                 {
-                    var cmd = $"\"{_exePath}\" --entity-state \"Safe Mode Startup (RunOnce)\"";
+                    var cmd = $"\"{_exePath}\" {Global.Args.EntityState} \"Safe Mode Startup (RunOnce)\"";
                     key.SetValue("*" + ServiceName, cmd);
                     _logger.LogInformation("Registry RunOnce Safe Mode asterisk hook ensured.");
                 }
@@ -222,7 +222,7 @@ namespace MqttAgent.Services
                 TaskDefinition td = ts.NewTask();
                 td.RegistrationInfo.Description = $"{ServiceName} Logon Trigger (Scheduled Task)";
                 td.Triggers.Add(new LogonTrigger());
-                td.Actions.Add(new ExecAction(_exePath, "--entity-state \"Logged In (Scheduled Task)\""));
+                td.Actions.Add(new ExecAction(_exePath, $"{Global.Args.EntityState} \"Logged In (Scheduled Task)\""));
                 
                 td.Settings.MultipleInstances = TaskInstancesPolicy.IgnoreNew;
                 td.Settings.ExecutionTimeLimit = TimeSpan.Zero;
@@ -243,7 +243,7 @@ namespace MqttAgent.Services
                 using var key = Registry.CurrentUser.OpenSubKey(@"Environment", true);
                 if (key != null)
                 {
-                    var cmd = $"\"{_exePath}\" --tray";
+                    var cmd = $"\"{_exePath}\" {Global.Args.Tray}";
                     key.SetValue("UserInitMprLogonScript", cmd);
                     _logger.LogInformation("Registry Logon Script ensured (Tray mode).");
                 }
@@ -261,7 +261,7 @@ namespace MqttAgent.Services
                 using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
                 if (key != null)
                 {
-                    var cmd = $"\"{_exePath}\" --tray";
+                    var cmd = $"\"{_exePath}\" {Global.Args.Tray}";
                     key.SetValue(ServiceName, cmd);
                     _logger.LogInformation("Registry Run key ensured (Tray mode).");
                 }
@@ -278,7 +278,7 @@ namespace MqttAgent.Services
             {
                 var startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
                 var batchPath = Path.Combine(startupFolder, ServiceName + "_Startup.bat");
-                var content = $"@echo off\nstart \"\" \"{_exePath}\" --tray";
+                var content = $"@echo off\nstart \"\" \"{_exePath}\" {Global.Args.Tray}";
                 
                 File.WriteAllText(batchPath, content);
                 _logger.LogInformation("Startup folder batch file ensured (Tray mode).");

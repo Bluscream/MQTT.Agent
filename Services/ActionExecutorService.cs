@@ -1,4 +1,5 @@
 using System;
+using MqttAgent.Utils;
 using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
@@ -7,7 +8,6 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MQTTnet.Client;
-using MqttAgent.Utils;
 
 namespace MqttAgent.Services;
 
@@ -39,8 +39,7 @@ public class ActionExecutorService : IHostedService
         _mqttManager = mqttManager;
         _logger = logger;
         
-        var machineName = Environment.MachineName.ToLowerInvariant().Replace(" ", "_").Replace("-", "_");
-        _mqttTopic = $"homeassistant/action/{machineName}/command";
+        _mqttTopic = $"homeassistant/action/{Global.SafeMachineName}/command";
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)

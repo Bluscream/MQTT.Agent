@@ -3,6 +3,7 @@ using System.Text;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System;
+using MqttAgent.Utils;
 
 namespace MqttAgent.Services;
 
@@ -32,65 +33,6 @@ public class WindowsService
         _services = services;
     }
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern uint WTSGetActiveConsoleSessionId();
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool LockWorkStation();
-
-    [DllImport("wtsapi32.dll", SetLastError = true)]
-    private static extern bool WTSLockWorkStation(uint SessionId);
-
-    [DllImport("wtsapi32.dll", SetLastError = true)]
-    private static extern bool WTSLogoffSession(IntPtr hServer, uint SessionId, bool bWait);
-
-    [DllImport("advapi32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern bool InitiateSystemShutdownEx(string? lpMachineName, string? lpMessage, uint dwTimeout, bool bForceAppsClosed, bool bRebootAfterShutdown, uint dwReason);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ExitWindowsEx(uint uFlags, uint dwReason);
-
-    // ExitWindowsEx flags
-    private const uint EWX_LOGOFF = 0x00000000;
-    private const uint EWX_FORCE = 0x00000004;
-    private const uint EWX_FORCEIFHUNG = 0x00000010;
-
-    // Window Enumeration P/Invokes
-    [DllImport("user32.dll")]
-    private static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
-
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-    private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
-
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-    private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsWindowVisible(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsWindowEnabled(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct RECT
-    {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
-    }
-
-    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     private List<WindowInfo> _windows = new();
     private bool _wtsLockAvailable = true;
 
@@ -98,14 +40,14 @@ public class WindowsService
     {
         try
         {
-            var activeSessionId = WTSGetActiveConsoleSessionId();
+            var activeSessionId = NativeMethods.WTSGetActiveConsoleSessionId();
             Console.WriteLine($"Initiating lock for session {activeSessionId}...");
             
             if (_wtsLockAvailable)
             {
                 try
                 {
-                    if (WTSLockWorkStation(activeSessionId))
+                    if (NativeMethods.WTSLockWorkStation(activeSessionId))
                     {
                         return "Workstation locked successfully via WTS.";
                     }
@@ -117,7 +59,7 @@ public class WindowsService
                 }
             }
 
-            if (LockWorkStation())
+            if (NativeMethods.LockWorkStation())
             {
                 return "Workstation locked successfully via user32.dll.";
             }
@@ -153,7 +95,7 @@ public class WindowsService
             if (allUsers)
             {
                 // Logoff all sessions via WTS
-                WTSLogoffSession(IntPtr.Zero, 0xFFFFFFFF, false);
+                NativeMethods.WTSLogoffSession(IntPtr.Zero, 0xFFFFFFFF, false);
                 return "Global logout initiated.";
             }
             else
@@ -161,15 +103,15 @@ public class WindowsService
                 if (force)
                 {
                     // Use ExitWindowsEx with EWX_FORCE to forcefully close all apps
-                    uint flags = EWX_LOGOFF | EWX_FORCE;
-                    if (ExitWindowsEx(flags, 0))
+                    uint flags = NativeMethods.EWX_LOGOFF | NativeMethods.EWX_FORCE;
+                    if (NativeMethods.ExitWindowsEx(flags, 0))
                     {
                         return "Forced logout initiated via ExitWindowsEx.";
                     }
                     // Fallback: try WTS if ExitWindowsEx fails
                 }
-                var sessionId = WTSGetActiveConsoleSessionId();
-                WTSLogoffSession(IntPtr.Zero, sessionId, false);
+                var sessionId = NativeMethods.WTSGetActiveConsoleSessionId();
+                NativeMethods.WTSLogoffSession(IntPtr.Zero, sessionId, false);
                 return $"Logout initiated for session {sessionId}.";
             }
         }
@@ -190,7 +132,7 @@ public class WindowsService
 
         try
         {
-            if (InitiateSystemShutdownEx(null, message, (uint)timeout, force, reboot, 0))
+            if (NativeMethods.InitiateSystemShutdownEx(null, message, (uint)timeout, force, reboot, 0))
             {
                 return (reboot ? "Reboot" : "Shutdown") + " initiated.";
             }
@@ -206,7 +148,7 @@ public class WindowsService
     public List<WindowInfo> ListWindows()
     {
         _windows.Clear();
-        EnumWindows(EnumWindowCallback, IntPtr.Zero);
+        NativeMethods.EnumWindows(EnumWindowCallback, IntPtr.Zero);
         return _windows;
     }
 
@@ -216,20 +158,20 @@ public class WindowsService
         {
             var window = new WindowInfo { Handle = hWnd };
             var titleBuilder = new StringBuilder(256);
-            GetWindowText(hWnd, titleBuilder, titleBuilder.Capacity);
+            NativeMethods.GetWindowText(hWnd, titleBuilder, titleBuilder.Capacity);
             window.Title = titleBuilder.ToString();
 
             var classBuilder = new StringBuilder(256);
-            GetClassName(hWnd, classBuilder, classBuilder.Capacity);
+            NativeMethods.GetClassName(hWnd, classBuilder, classBuilder.Capacity);
             window.ClassName = classBuilder.ToString();
 
             uint processId;
-            window.ThreadId = (int)GetWindowThreadProcessId(hWnd, out processId);
+            window.ThreadId = (int)NativeMethods.GetWindowThreadProcessId(hWnd, out processId);
             window.ProcessId = (int)processId;
-            window.IsVisible = IsWindowVisible(hWnd);
-            window.IsEnabled = IsWindowEnabled(hWnd);
+            window.IsVisible = NativeMethods.IsWindowVisible(hWnd);
+            window.IsEnabled = NativeMethods.IsWindowEnabled(hWnd);
 
-            if (GetWindowRect(hWnd, out RECT rect))
+            if (NativeMethods.GetWindowRect(hWnd, out NativeMethods.RECT rect))
             {
                 window.X = rect.Left;
                 window.Y = rect.Top;

@@ -1,7 +1,14 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MqttAgent.Services;
+using MqttAgent.Models;
 using System.Text.Json;
+using System.Diagnostics;
+using System;
+using MqttAgent.Utils;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 
 namespace MqttAgent.Controllers;
 
@@ -13,12 +20,82 @@ public class SystemController : ControllerBase
     private readonly ShutdownBlockerService _blocker;
     private readonly ForceActionService _forceActionService;
     private readonly IMqttManager _mqtt;
+    private readonly ProcessService _processService;
+    private readonly ILogger<SystemController> _logger;
 
-    public SystemController(ShutdownBlockerService blocker, ForceActionService forceActionService, IMqttManager mqtt)
+    public SystemController(ShutdownBlockerService blocker, ForceActionService forceActionService, IMqttManager mqtt, ProcessService processService, ILogger<SystemController> logger)
     {
         _blocker = blocker;
         _forceActionService = forceActionService;
         _mqtt = mqtt;
+        _processService = processService;
+        _logger = logger;
+    }
+
+    [HttpPost("notify")]
+    public async Task<IActionResult> Notify([FromBody] NotifyRequest request)
+    {
+        if (string.IsNullOrEmpty(request.Message)) return BadRequest("Message is required.");
+
+        try
+        {
+            if (request.Type.Equals("messagebox", StringComparison.OrdinalIgnoreCase))
+            {
+                var sessionId = _processService.GetActiveConsoleSessionId();
+                var args = $"--messagebox --title \"{request.Title}\" --message \"{request.Message}\" --type \"{request.MessageBoxType}\" --icon \"{request.MessageBoxIcon}\" --timeout {request.Timeout}";
+                await _processService.StartProcess(Process.GetCurrentProcess().MainModule?.FileName ?? "MqttAgent.exe", args, asUser: sessionId.ToString());
+            }
+            else if (request.Type.Equals("banner", StringComparison.OrdinalIgnoreCase))
+            {
+                var sessionId = _processService.GetActiveConsoleSessionId();
+                var args = $"--banner --message \"{request.Message}\"";
+                await _processService.StartProcess(Process.GetCurrentProcess().MainModule?.FileName ?? "MqttAgent.exe", args, asUser: sessionId.ToString());
+            }
+            else
+            {
+                // Default to Toast via MQTT topic to leverage existing logic
+                var machineName = Global.SafeMachineName;
+                var topic = $"homeassistant/notify/{machineName}/command";
+                var payload = JsonSerializer.Serialize(new ToastPayload
+                {
+                    Title = request.Title,
+                    Message = request.Message,
+                    Data = request.Data
+                });
+                await _mqtt.EnqueueAsync(topic, payload, false);
+            }
+
+            return Ok(new { status = "success" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing notify request");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("start-process")]
+    public async Task<IActionResult> StartProcess([FromBody] StartProcessRequest request)
+    {
+        if (string.IsNullOrEmpty(request.Executable)) return BadRequest("Executable is required.");
+
+        try
+        {
+            var result = await _processService.StartProcess(
+                request.Executable,
+                request.Arguments,
+                request.WaitForExit,
+                request.Timeout,
+                asUser: request.AsUser,
+                elevated: request.Elevated);
+
+            return Ok(new { status = "success", result });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error starting process");
+            return StatusCode(500, new { error = ex.Message });
+        }
     }
 
     [HttpGet("block-status")]
@@ -41,7 +118,7 @@ public class SystemController : ControllerBase
             } catch { }
         }
 
-        var machineName = Environment.MachineName.ToLowerInvariant().Replace(" ", "_").Replace("-", "_");
+        var machineName = Global.SafeMachineName;
         var topic = $"homeassistant/switch/{machineName}_block_shutdown/set";
         var payload = finalEnabled ? "ON" : "OFF";
         await _mqtt.EnqueueAsync(topic, payload, true);
@@ -69,7 +146,7 @@ public class SystemController : ControllerBase
             } catch { }
         }
 
-        var machineName = Environment.MachineName.ToLowerInvariant().Replace(" ", "_").Replace("-", "_");
+        var machineName = Global.SafeMachineName;
         var topic = $"homeassistant/switch/{machineName}_force_action/set";
         var payload = finalEnabled ? "ON" : "OFF";
         await _mqtt.EnqueueAsync(topic, payload, true);
@@ -95,7 +172,7 @@ public class SystemController : ControllerBase
 
         if (string.IsNullOrEmpty(finalAction)) return BadRequest("Action is required.");
 
-        var machineName = Environment.MachineName.ToLowerInvariant().Replace(" ", "_").Replace("-", "_");
+        var machineName = Global.SafeMachineName;
         var topic = $"homeassistant/action/{machineName}/command";
         await _mqtt.EnqueueAsync(topic, finalAction, true);
         

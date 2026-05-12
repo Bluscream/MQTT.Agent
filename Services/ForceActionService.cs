@@ -1,4 +1,5 @@
 using System;
+using MqttAgent.Utils;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
@@ -25,7 +26,7 @@ public class ForceActionService : IHostedService
     {
         _mqttManager = mqttManager;
         _logger = logger;
-        _machineName = Environment.MachineName.ToLowerInvariant().Replace(" ", "_").Replace("-", "_");
+        _machineName = Global.SafeMachineName;
 
         _stateTopic = $"homeassistant/switch/{_machineName}_force_action/state";
         _commandTopic = $"homeassistant/switch/{_machineName}_force_action/set";

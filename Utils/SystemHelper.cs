@@ -163,32 +163,40 @@ namespace MqttAgent.Utils
             return users;
         }
 
-        [DllImport("user32.dll")]
-        private static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
 
-        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
-        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-        private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
-
-        [DllImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool IsWindowVisible(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetWindowThreadProcessId(IntPtr hWnd, out uint ProcessId);
+        public static HashSet<IntPtr> FlashingWindows { get; } = new HashSet<IntPtr>();
 
         public static bool IsNeedsAttention()
         {
             bool needsAttention = false;
+            if (FlashingWindows.Count > 0)
+            {
+                // Verify the flashing windows still exist
+                var toRemove = new List<IntPtr>();
+                foreach (var fw in FlashingWindows)
+                {
+                    if (!NativeMethods.IsWindowVisible(fw))
+                    {
+                        toRemove.Add(fw);
+                    }
+                    else
+                    {
+                        needsAttention = true;
+                    }
+                }
+                foreach (var r in toRemove) FlashingWindows.Remove(r);
+            }
+
+            if (needsAttention) return true;
             try
             {
-                EnumWindows((hWnd, lParam) =>
+                NativeMethods.EnumWindows((hWnd, lParam) =>
                 {
-                    if (IsWindowVisible(hWnd))
+                    if (NativeMethods.IsWindowVisible(hWnd))
                     {
                         StringBuilder sb = new StringBuilder(256);
-                        GetClassName(hWnd, sb, sb.Capacity);
+                        NativeMethods.GetClassName(hWnd, sb, sb.Capacity);
                         if (sb.ToString() == "#32770")
                         {
                             needsAttention = true;

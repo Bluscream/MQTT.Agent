@@ -1,0 +1,10 @@
+{
+  "domain": "mqtt_agent",
+  "name": "MQTT.Agent",
+  "documentation": "https://github.com/Bluscream/MQTT.Agent",
+  "dependencies": ["mqtt"],
+  "codeowners": ["@Bluscream"],
+  "iot_class": "local_push",
+  "version": "1.0.0",
+  "config_flow": true
+}

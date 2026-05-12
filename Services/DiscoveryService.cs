@@ -24,10 +24,10 @@ namespace MqttAgent.Services
 
         public async Task PublishDiscoveryAsync()
         {
-            var uniqueId = _mqtt.UniqueId;
+            var uniqueId = Global.UniqueId;
             var entityId = _mqtt.EntityId;
-            var deviceIdentifier = Environment.MachineName.ToLowerInvariant();
-            var machineName = Environment.MachineName;
+            var deviceIdentifier = Global.UniqueId;
+            var machineName = Global.MachineName;
 
             var deviceInfo = new
             {
@@ -38,7 +38,7 @@ namespace MqttAgent.Services
                 sw_version = "1.0.0"
             };
 
-            bool moreStates = Environment.CommandLine.Contains("--more-states") || Environment.CommandLine.Contains("/more-states");
+            bool moreStates = Global.IsMoreStatesEnabled;
             var statusOptions = new System.Collections.Generic.List<string> {
                 "On", "Locked", "Logged out", "Updating", "Safe Mode", "Shutting Down", "Logging In", "Logging Out"
             };
@@ -61,21 +61,8 @@ namespace MqttAgent.Services
                 device = deviceInfo
             };
 
-            // 2. Events Sensor
-            var eventConfig = new
-            {
-                name = "Event",
-                unique_id = $"{deviceIdentifier}_event",
-                object_id = $"{entityId}_event",
-                state_topic = $"homeassistant/sensor/{uniqueId}_event/state",
-                value_template = "{{ value_json.event }}",
-                json_attributes_topic = $"homeassistant/sensor/{uniqueId}_event/state",
-                device = deviceInfo,
-                icon = "mdi:bell"
-            };
-
             // 3. Block Shutdown Switch
-            var safeMachineName = machineName.ToLowerInvariant().Replace(" ", "_").Replace("-", "_");
+            var safeMachineName = Global.SafeMachineName;
             var shutdownConfig = new
             {
                 name = "Block Shutdown",
@@ -137,7 +124,6 @@ namespace MqttAgent.Services
             _logger.LogInformation("Publishing unified HA discovery for {Device}", deviceIdentifier);
             
             await _mqtt.EnqueueAsync($"homeassistant/select/{uniqueId}/config", JsonSerializer.Serialize(statusConfig), true);
-            await _mqtt.EnqueueAsync($"homeassistant/sensor/{uniqueId}_event/config", JsonSerializer.Serialize(eventConfig), true);
             await _mqtt.EnqueueAsync($"homeassistant/switch/{safeMachineName}_block_shutdown/config", JsonSerializer.Serialize(shutdownConfig), true);
             await _mqtt.EnqueueAsync($"homeassistant/switch/{safeMachineName}_force_action/config", JsonSerializer.Serialize(forceActionConfig), true);
             await _mqtt.EnqueueAsync($"homeassistant/notify/{safeMachineName}/config", JsonSerializer.Serialize(notifyConfig), true);

@@ -1,4 +1,5 @@
 using System;
+using MqttAgent.Utils;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
@@ -24,7 +25,7 @@ public class NotificationReceiverService : IHostedService
     {
         _mqttManager = mqttManager;
         _logger = logger;
-        _machineName = Environment.MachineName.ToLowerInvariant().Replace(" ", "_").Replace("-", "_");
+        _machineName = Global.SafeMachineName;
         _mqttTopic = $"homeassistant/notify/{_machineName}/command";
     }
 

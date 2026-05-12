@@ -1,4 +1,5 @@
 using System;
+using MqttAgent.Utils;
 using System.Threading;
 using System.Threading.Tasks;
 using MqttAgent.Models;
@@ -13,6 +14,7 @@ namespace MqttAgent.Services
     public interface IMqttManager : Microsoft.Extensions.Hosting.IHostedService
     {
         Task EnqueueAsync(string topic, string payload, bool retain = true);
+        Task EnqueueAsync(string topic, byte[] payload, bool retain = true);
         Task SubscribeAsync(string topic, Func<MqttApplicationMessageReceivedEventArgs, Task> handler);
         bool IsConnected { get; }
         string UniqueId { get; }
@@ -25,7 +27,7 @@ namespace MqttAgent.Services
         private readonly MqttOptions _options;
         private IManagedMqttClient? _mqttClient;
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Func<MqttApplicationMessageReceivedEventArgs, Task>> _topicHandlers = new();
-        public string UniqueId { get; }
+        public string UniqueId => Global.UniqueId;
         public string EntityId { get; }
 
         public MqttManager(ILogger<MqttManager> logger, IOptions<MqttOptions> options)
@@ -33,9 +35,7 @@ namespace MqttAgent.Services
             _logger = logger;
             _options = options.Value;
 
-            UniqueId = Environment.MachineName.ToLowerInvariant();
-            
-            var rawName = _options.EntityId ?? Environment.MachineName.ToLowerInvariant().Replace("-", "_").Replace(" ", "_");
+            var rawName = _options.EntityId ?? Global.SafeMachineName;
             EntityId = rawName.EndsWith("_action") ? rawName : $"{rawName}_action";
         }
 
@@ -121,6 +121,11 @@ namespace MqttAgent.Services
         }
 
         public async Task EnqueueAsync(string topic, string payload, bool retain = true)
+        {
+            await EnqueueAsync(topic, System.Text.Encoding.UTF8.GetBytes(payload), retain);
+        }
+
+        public async Task EnqueueAsync(string topic, byte[] payload, bool retain = true)
         {
             if (_mqttClient == null) return;
 

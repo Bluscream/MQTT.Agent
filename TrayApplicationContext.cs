@@ -1,4 +1,5 @@
 using System;
+using MqttAgent.Utils;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -8,7 +9,6 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Extensions.DependencyInjection;
 using MqttAgent.Services;
-using MqttAgent.Utils;
 using System.Security.Principal;
 
 namespace MqttAgent;
@@ -21,6 +21,8 @@ public class TrayApplicationContext : ApplicationContext
     private readonly bool _isClientOnly;
     private readonly string _baseUrl;
     private readonly string _token;
+
+    private HiddenMessageWindow _messageWindow;
 
     public TrayApplicationContext(IServiceProvider services)
     {
@@ -39,6 +41,9 @@ public class TrayApplicationContext : ApplicationContext
             _isClientOnly = listeners.Any(l => l.Port == port);
         }
         catch { _isClientOnly = false; }
+
+        _messageWindow = new HiddenMessageWindow();
+        _messageWindow.Show();
 
         InitializeComponent();
     }
@@ -161,7 +166,7 @@ public class TrayApplicationContext : ApplicationContext
             var mqtt = _services.GetService<IMqttManager>();
             if (mqtt != null)
             {
-                var machineName = Environment.MachineName.ToLowerInvariant().Replace(" ", "_").Replace("-", "_");
+                var machineName = Global.SafeMachineName;
                 var topic = $"homeassistant/switch/{machineName}_block_shutdown/set";
                 var payload = newState ? "ON" : "OFF";
                 await mqtt.EnqueueAsync(topic, payload, true);
@@ -242,5 +247,42 @@ public class TrayApplicationContext : ApplicationContext
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         Application.Exit();
+    }
+}
+
+public class HiddenMessageWindow : Form
+{
+    private readonly int _msgShellHook;
+    private const int HSHELL_FLASH = 0x8006;
+    private const int HSHELL_WINDOWACTIVATED = 4;
+    private const int HSHELL_RUDEAPPACTIVATED = 32772;
+
+    public HiddenMessageWindow()
+    {
+        this.FormBorderStyle = FormBorderStyle.None;
+        this.ShowInTaskbar = false;
+        this.Load += (s, e) =>
+        {
+            this.Size = new Size(0, 0);
+            NativeMethods.RegisterShellHookWindow(this.Handle);
+        };
+        _msgShellHook = NativeMethods.RegisterWindowMessage("SHELLHOOK");
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == _msgShellHook)
+        {
+            int wParam = m.WParam.ToInt32();
+            if (wParam == HSHELL_FLASH)
+            {
+                SystemHelper.FlashingWindows.Add(m.LParam);
+            }
+            else if (wParam == HSHELL_WINDOWACTIVATED || wParam == HSHELL_RUDEAPPACTIVATED)
+            {
+                SystemHelper.FlashingWindows.Remove(m.LParam);
+            }
+        }
+        base.WndProc(ref m);
     }
 }

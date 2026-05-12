@@ -1,4 +1,5 @@
 using System;
+using MqttAgent.Utils;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
@@ -8,8 +9,6 @@ using System.Linq;
 using System.Management;
 using System.ServiceProcess;
 using System.Threading;
-using System.Threading.Tasks;
-using MqttAgent.Utils;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using LibreHardwareMonitor.Hardware;
@@ -133,13 +132,13 @@ namespace MqttAgent.Services
             }
         }
 
-        private async Task ReportRichEvent(string eventDescription, string eventType, object? attributes = null)
+        public async Task ReportRichEvent(string eventDescription, string eventType, object? attributes = null)
         {
             var payload = new Dictionary<string, object>
             {
                 ["event"] = eventDescription,
                 ["event_type"] = eventType,
-                ["machine_name"] = Environment.MachineName,
+                ["machine_name"] = Global.MachineName,
                 ["timestamp"] = DateTime.UtcNow.ToString("O")
             };
 
@@ -258,7 +257,7 @@ namespace MqttAgent.Services
         private async Task UpdateState()
         {
             string state = "On";
-            bool moreStates = Environment.CommandLine.Contains("--more-states") || Environment.CommandLine.Contains("/more-states");
+            bool moreStates = Global.IsMoreStatesEnabled;
 
             if (SystemHelper.IsSafeMode())
             {
@@ -624,9 +623,6 @@ namespace MqttAgent.Services
             
             // Also update the power profile state topic
             await _mqtt.EnqueueAsync($"homeassistant/select/{uniqueId}_power_profile/state", attributes.power_profile, true);
-            
-            // Update interval state
-            await _mqtt.EnqueueAsync($"homeassistant/number/{uniqueId}_update_interval/state", _updateIntervalSeconds.ToString(), true);
             
             // Update interval state
             await _mqtt.EnqueueAsync($"homeassistant/number/{uniqueId}_update_interval/state", _updateIntervalSeconds.ToString(), true);

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System;
+using MqttAgent.Utils;
 
 namespace MqttAgent.Services;
 
@@ -15,12 +16,6 @@ public class LogonRegistryService
         _registryService = registryService;
         _processService = processService;
     }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern uint WTSGetActiveConsoleSessionId();
-
-    [DllImport("wtsapi32.dll", SetLastError = true)]
-    private static extern bool WTSConnectSession(uint TargetSessionId, uint SourceSessionId, string pPassword, bool bWait);
 
     public string Login(string username, string password, string domain = "", bool keepCredentials = false, bool wtsConnect = false)
     {
@@ -42,7 +37,7 @@ public class LogonRegistryService
             _registryService.WriteRegistry(passwordlessPath, "DevicePasswordLessBuildVersion", "0", "DWord", "HKLM");
 
             // 2. Refresh Logon UI
-            var sessionId = WTSGetActiveConsoleSessionId();
+            var sessionId = NativeMethods.WTSGetActiveConsoleSessionId();
             var processes = Process.GetProcessesByName("LogonUI");
             
             bool logonUIFound = false;
@@ -68,7 +63,7 @@ public class LogonRegistryService
             {
                 Task.Run(async () => {
                     await Task.Delay(5000);
-                    WTSConnectSession(sessionId, 0xFFFFFFFF, password, false);
+                    NativeMethods.WTSConnectSession(sessionId, 0xFFFFFFFF, password, false);
                 });
             }
 
@@ -82,7 +77,7 @@ public class LogonRegistryService
 
     public async Task<string> TypeLogon(string text, bool enter = true)
     {
-        var sessionId = WTSGetActiveConsoleSessionId();
+        var sessionId = NativeMethods.WTSGetActiveConsoleSessionId();
         Console.WriteLine($"Initiating TypeLogon in session {sessionId}...");
         
         try
@@ -168,7 +163,7 @@ public class LogonRegistryService
         catch (Exception ex)
         {
             Console.WriteLine($"WARNING: Dynamic user discovery failed: {ex.Message}. Falling back to essentials.");
-            users.Add(new UserAccountInfo { Username = "bluscream", Type = "LocalAccount", Domain = Environment.MachineName });
+            users.Add(new UserAccountInfo { Username = "bluscream", Type = "LocalAccount", Domain = Global.MachineName });
         }
         return users;
     }

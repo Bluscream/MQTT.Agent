@@ -1,0 +1,45 @@
+notify:
+  description: "Send a notification to the Windows PC."
+  fields:
+    message:
+      description: "The message to display."
+      required: true
+      example: "Hello from Home Assistant!"
+    title:
+      description: "The title of the notification."
+      required: false
+      default: "Home Assistant"
+    type:
+      description: "The type of notification (toast, messagebox, banner)."
+      required: false
+      default: "toast"
+    msgbox_type:
+      description: "The button style for messagebox (MB_OK, MB_YESNO, etc)."
+      required: false
+      default: "MB_OK"
+    msgbox_icon:
+      description: "The icon for messagebox (MB_ICONINFORMATION, MB_ICONERROR, etc)."
+      required: false
+      default: "MB_ICONINFORMATION"
+    timeout:
+      description: "Timeout in milliseconds (0 for no timeout)."
+      required: false
+      default: 0
+
+start_process:
+  description: "Start a process on the Windows PC."
+  fields:
+    executable:
+      description: "The path to the executable or command name."
+      required: true
+      example: "notepad.exe"
+    arguments:
+      description: "Command line arguments."
+      required: false
+    as_user:
+      description: "Run as a specific user or session ID."
+      required: false
+    elevated:
+      description: "Run with administrator privileges (UAC prompt will appear on PC)."
+      required: false
+      default: false
