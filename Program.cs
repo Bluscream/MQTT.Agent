@@ -160,17 +160,32 @@ public static class Program
         bool moreStates = Global.IsMoreStatesEnabled;
         bool isAdmin = Global.IsAdmin;
 
-        if ((install || uninstall || moreStates) && isAdmin)
+        if ((install || uninstall || moreStates || Global.IsStart || Global.IsStop) && isAdmin)
         {
             // Create a temporary logger for setup tasks
             using var loggerFactory = LoggerFactory.Create(builder => builder.AddSerilog());
             var setupLogger = loggerFactory.CreateLogger<PersistenceService>();
             var persistence = new PersistenceService(setupLogger);
+            string serviceName = "MqttAgent";
             
-            if (uninstall)
+            if (uninstall || Global.IsStop || (install && Global.IsStop))
             {
-                persistence.Uninstall();
-                if (!install) return; // Exit if only uninstalling
+                if (ServiceHelper.IsServiceInstalled(serviceName))
+                {
+                    Log.Information("Stopping {Service} service...", serviceName);
+                    try {
+                        ServiceHelper.StopService(serviceName);
+                        // Wait for service to stop
+                        int retries = 20;
+                        while (ServiceHelper.IsServiceRunning(serviceName) && retries-- > 0) Thread.Sleep(500);
+                    } catch (Exception ex) { Log.Warning("Failed to stop service: {Message}", ex.Message); }
+                }
+                
+                if (uninstall)
+                {
+                    persistence.Uninstall();
+                    if (!install) return; // Exit if only uninstalling
+                }
             }
             
             if (install)
@@ -184,55 +199,80 @@ public static class Program
                 persistence.EnsureMoreStatesTriggers();
             }
 
-            // If we are JUST installing/uninstalling without starting, exit
+            if (Global.IsStart || (install && !Global.IsStop))
+            {
+                if (ServiceHelper.IsServiceInstalled(serviceName))
+                {
+                    Log.Information("Starting {Service} service...", serviceName);
+                    try { ServiceHelper.StartService(serviceName); }
+                    catch (Exception ex) { Log.Warning("Failed to start service: {Message}", ex.Message); }
+                }
+            }
+            
+            // If we are JUST doing setup/service control without starting, exit
             if (!isTray && !isService && !args.Contains("--run") && !args.Contains("--entity-state"))
             {
-                Log.Information("Setup task complete. Exiting.");
+                Log.Information("Task complete. Exiting.");
                 return;
             }
         }
 
         // Handle one-off state reporting
-        var entityState = args.FirstOrDefault(a => a.StartsWith(Global.Args.EntityState))?.Split(' ', 2).LastOrDefault();
-        if (string.IsNullOrEmpty(entityState)) entityState = args.SkipWhile(a => a != Global.Args.EntityState).Skip(1).FirstOrDefault();
+        var entityState = args.SkipWhile(a => a != Global.Args.EntityState).Skip(1).FirstOrDefault();
+        // Guard against picking up another flag as the value
+        if (entityState != null && entityState.StartsWith("-")) entityState = null;
 
         if (!string.IsNullOrEmpty(entityState))
         {
             var attributes = args.SkipWhile(a => a != Global.Args.EntityAttributes).Skip(1).FirstOrDefault();
             
-            using var appForState = builder.Build();
-            var mqtt = appForState.Services.GetRequiredService<IMqttManager>();
-            await mqtt.StartAsync(CancellationToken.None);
-            
-            var machineName = Global.UniqueId;
-            var topic = $"homeassistant/select/{machineName}/state";
-            await mqtt.EnqueueAsync(topic, entityState, true);
-
-            if (!string.IsNullOrEmpty(attributes))
+            try 
             {
-                var attrTopic = $"homeassistant/select/{machineName}/attributes";
-                await mqtt.EnqueueAsync(attrTopic, attributes, true);
+                var baseUrl = $"http://127.0.0.1:{port}";
+                var client = new System.Net.Http.HttpClient();
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                var url = $"{baseUrl}/api/state?state={Uri.EscapeDataString(entityState)}";
+                if (!string.IsNullOrEmpty(attributes)) url += $"&attributes={Uri.EscapeDataString(attributes)}";
+                
+                var resp = client.PostAsync(url, null).GetAwaiter().GetResult();
+                if (resp.IsSuccessStatusCode)
+                    Log.Information("Reported state '{State}' to service API. Exiting.", entityState);
+                else
+                    Log.Warning("Failed to report state via API: {StatusCode}. Is the service running?", resp.StatusCode);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to connect to local service API to report state.");
             }
 
-            await mqtt.StopAsync(CancellationToken.None);
-            Log.Information("Reported state '{State}' to MQTT. Exiting.", entityState);
             return;
         }
         
-        builder.Services.AddHostedService(p => p.GetRequiredService<SystemMonitorService>());
-        builder.Services.AddHostedService(p => p.GetRequiredService<NotificationReceiverService>());
-        builder.Services.AddHostedService(p => p.GetRequiredService<ActionExecutorService>());
-        builder.Services.AddHostedService(p => p.GetRequiredService<ForceActionService>());
-        builder.Services.AddHostedService(p => p.GetRequiredService<ActionCenterPollerService>());
+        // In tray mode, check if the service is already running.
+        // If so, skip MQTT and background services — tray will operate as HTTP client only.
+        bool serviceAlreadyRunning = isTray && ServiceHelper.IsServiceRunning("MqttAgent");
         
-        if (Global.IsMoreStatesEnabled)
+        if (!serviceAlreadyRunning)
         {
-            builder.Services.AddHostedService(p => p.GetRequiredService<CameraService>());
+            builder.Services.AddHostedService(p => p.GetRequiredService<SystemMonitorService>());
+            builder.Services.AddHostedService(p => p.GetRequiredService<NotificationReceiverService>());
+            builder.Services.AddHostedService(p => p.GetRequiredService<ActionExecutorService>());
+            builder.Services.AddHostedService(p => p.GetRequiredService<ForceActionService>());
+            builder.Services.AddHostedService(p => p.GetRequiredService<ActionCenterPollerService>());
+            
+            if (Global.IsMoreStatesEnabled)
+            {
+                builder.Services.AddHostedService(p => p.GetRequiredService<CameraService>());
+            }
+            builder.Services.AddHostedService(p => p.GetRequiredService<TrayStarterService>());
+            
+            // Run MQTT only when the service isn't handling it
+            builder.Services.AddHostedService(p => (MqttManager)p.GetRequiredService<IMqttManager>());
         }
-        builder.Services.AddHostedService(p => p.GetRequiredService<TrayStarterService>());
-        
-        // Always run MQTT if we aren't JUST a helper
-        builder.Services.AddHostedService(p => (MqttManager)p.GetRequiredService<IMqttManager>());
+        else
+        {
+            Log.Information("Service is already running. Tray will operate in client-only mode (no MQTT/discovery).");
+        }
 
         builder.Services.Configure<HostOptions>(options =>
         {
@@ -268,16 +308,19 @@ public static class Program
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            Log.Information("Starting background services in tray-only mode...");
+            Log.Information("Starting tray mode (client-only: {ClientOnly})...", serviceAlreadyRunning);
             
             try
             {
-                // Start hosted services manually, skipping the web host itself
-                var hostedServices = app.Services.GetServices<IHostedService>();
-                foreach (var service in hostedServices)
+                if (!serviceAlreadyRunning)
                 {
-                    if (service.GetType().FullName?.Contains("GenericWebHostService") == true) continue;
-                    _ = service.StartAsync(CancellationToken.None);
+                    // Start hosted services manually, skipping the web host itself
+                    var hostedServices = app.Services.GetServices<IHostedService>();
+                    foreach (var service in hostedServices)
+                    {
+                        if (service.GetType().FullName?.Contains("GenericWebHostService") == true) continue;
+                        _ = service.StartAsync(CancellationToken.None);
+                    }
                 }
 
                 Application.Run(new TrayApplicationContext(app.Services));

@@ -36,7 +36,7 @@ namespace MqttAgent.Services
             _options = options.Value;
 
             var rawName = _options.EntityId ?? Global.SafeMachineName;
-            EntityId = rawName.EndsWith("_action") ? rawName : $"{rawName}_action";
+            EntityId = rawName;
         }
 
         public bool IsConnected => _mqttClient?.IsConnected ?? false;

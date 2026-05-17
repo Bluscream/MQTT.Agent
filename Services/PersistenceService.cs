@@ -33,7 +33,7 @@ namespace MqttAgent.Services
 
         public void EnsureServiceSafeBoot()
         {
-            InstallAndStartService();
+            EnsureServiceInstalled();
             RegisterSafeBoot("Minimal");
             RegisterSafeBoot("Network");
         }
@@ -161,7 +161,7 @@ namespace MqttAgent.Services
             process.WaitForExit();
         }
 
-        private void InstallAndStartService()
+        private void EnsureServiceInstalled()
         {
             _logger.LogInformation("Checking if service '{ServiceName}' is installed...", ServiceName);
 
@@ -184,8 +184,6 @@ namespace MqttAgent.Services
                     ServiceHelper.UpdateServiceBinaryPath(ServiceName, binPath);
                 }
 
-                _logger.LogInformation("Ensuring service is started...");
-                ServiceHelper.StartService(ServiceName);
             }
             catch (Exception ex)
             {

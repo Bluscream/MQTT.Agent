@@ -53,25 +53,28 @@ function Bump-Version {
 }
 
 if ($Stop) {
-    Write-Host "Stopping MQTT Agent Service..." -ForegroundColor Cyan
-    if (Get-Service $ServiceName -ErrorAction SilentlyContinue) {
-        Write-Host "Stopping service via sudo..." -ForegroundColor Gray
-        sudo sc.exe stop $ServiceName
-        Start-Sleep -Seconds 2
+    Write-Host "Stopping MQTT Agent via native flag..." -ForegroundColor Cyan
+    if (Test-Path $DeployPath) {
+        sudo $DeployPath --stop
+    } else {
+        if (Get-Service $ServiceName -ErrorAction SilentlyContinue) {
+            sudo sc.exe stop $ServiceName
+            Start-Sleep -Seconds 2
+        }
     }
 
-    Write-Host "Killing MQTT Agent processes..." -ForegroundColor Cyan
-    # Kill any process with the name
+    Write-Host "Cleaning up any remaining processes..." -ForegroundColor Gray
     Get-Process MqttAgent -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    # Fallback aggressive kill
     taskkill /F /IM MqttAgent.exe /T 2>$null
 
     Write-Host "Waiting for file locks to release..." -ForegroundColor Gray
     $retry = 10
     while ($retry -gt 0) {
         try {
-            $testStream = [System.IO.File]::Open($DeployPath, 'Open', 'Write', 'None')
-            $testStream.Close()
+            if (Test-Path $DeployPath) {
+                $testStream = [System.IO.File]::Open($DeployPath, 'Open', 'Write', 'None')
+                $testStream.Close()
+            }
             break
         } catch {
             Start-Sleep -Seconds 1
@@ -136,22 +139,24 @@ if ($Install) {
     
     # Use the agent's native install logic
     $InstallArgs = @("--install")
+    if ($Stop) { $InstallArgs += "--stop" }
+    if ($Start) { $InstallArgs += "--start" }
     if ($MoreStates) { $InstallArgs += "--more-states" }
     if ($StartTray) { $InstallArgs += "--start-tray" }
-    sudo $TargetExe $InstallArgs
     
-
+    sudo $TargetExe $InstallArgs
 }
 
-if ($Start) {
-    Write-Host "Starting MQTT Agent Service via sudo..." -ForegroundColor Cyan
-    sudo sc.exe start $ServiceName
+if ($Start -and -not $Install) {
+    Write-Host "Starting MQTT Agent Service..." -ForegroundColor Cyan
+    $TargetExe = if ($Deploy) { $DeployPath } else { $ExePath }
+    sudo $TargetExe --start
+    
     if (-not $StartTray) {
-        Start-Sleep -Seconds 5
-        $TargetExe = if (Test-Path $DeployPath) { $DeployPath } else { $ExePath }
-        Write-Host $TargetExe
-        $StartArgs = @("-tray", "-token", $Token)
-        if ($MoreStates) { $StartArgs += "-more-states" }
+        Start-Sleep -Seconds 2
+        Write-Host "Starting Tray companion..." -ForegroundColor Gray
+        $StartArgs = @("--tray", "--token", $Token)
+        if ($MoreStates) { $StartArgs += "--more-states" }
         Start-Process $TargetExe -ArgumentList $StartArgs
     }
 }

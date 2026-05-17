@@ -67,7 +67,7 @@ namespace MqttAgent.Services
             {
                 name = "Block Shutdown",
                 unique_id = $"{deviceIdentifier}_block_shutdown",
-                object_id = $"{entityId}_block_shutdown",
+                object_id = $"{deviceIdentifier}_block_shutdown",
                 command_topic = $"homeassistant/switch/{safeMachineName}_block_shutdown/set",
                 state_topic = $"homeassistant/switch/{safeMachineName}_block_shutdown/state",
                 device = deviceInfo
@@ -78,7 +78,7 @@ namespace MqttAgent.Services
             {
                 name = "Force Action",
                 unique_id = $"{deviceIdentifier}_force_action",
-                object_id = $"{entityId}_force_action",
+                object_id = $"{deviceIdentifier}_force_action",
                 command_topic = $"homeassistant/switch/{safeMachineName}_force_action/set",
                 state_topic = $"homeassistant/switch/{safeMachineName}_force_action/state",
                 device = deviceInfo,
@@ -90,7 +90,7 @@ namespace MqttAgent.Services
             {
                 name = (string?)null,
                 unique_id = $"{deviceIdentifier}_notify",
-                object_id = $"{entityId}_notify",
+                object_id = $"{deviceIdentifier}_notify",
                 command_topic = $"homeassistant/notify/{safeMachineName}/command",
                 device = deviceInfo
             };
@@ -100,7 +100,7 @@ namespace MqttAgent.Services
             {
                 name = "Power Profile",
                 unique_id = $"{deviceIdentifier}_power_profile",
-                object_id = $"{entityId}_power_profile",
+                object_id = $"{deviceIdentifier}_power_profile",
                 state_topic = $"homeassistant/select/{uniqueId}_power_profile/state",
                 command_topic = $"homeassistant/select/{uniqueId}_power_profile/set",
                 options = PowerHelper.GetPowerSchemes().Select(s => s.Name).ToArray(),
@@ -116,10 +116,10 @@ namespace MqttAgent.Services
 
             // 7. Buttons for Actions
             var actionTopic = $"homeassistant/action/{safeMachineName}/command";
-            var shutdownBtn = new { name = "Shutdown", unique_id = $"{deviceIdentifier}_btn_shutdown", object_id = $"{entityId}_shutdown", command_topic = actionTopic, payload_press = "{\"action\": \"shutdown\"}", device = deviceInfo, device_class = "restart", icon = "mdi:power" };
-            var rebootBtn = new { name = "Reboot", unique_id = $"{deviceIdentifier}_btn_reboot", object_id = $"{entityId}_reboot", command_topic = actionTopic, payload_press = "{\"action\": \"reboot\"}", device = deviceInfo, device_class = "restart", icon = "mdi:restart" };
-            var lockBtn = new { name = "Lock", unique_id = $"{deviceIdentifier}_btn_lock", object_id = $"{entityId}_lock", command_topic = actionTopic, payload_press = "{\"action\": \"lock\"}", device = deviceInfo, icon = "mdi:lock" };
-            var logoffBtn = new { name = "Logoff", unique_id = $"{deviceIdentifier}_btn_logoff", object_id = $"{entityId}_logoff", command_topic = actionTopic, payload_press = "{\"action\": \"logoff\"}", device = deviceInfo, icon = "mdi:logout" };
+            var shutdownBtn = new { name = "Shutdown", unique_id = $"{deviceIdentifier}_btn_shutdown", object_id = $"{deviceIdentifier}_shutdown", command_topic = actionTopic, payload_press = "{\"action\": \"shutdown\"}", device = deviceInfo, device_class = "restart", icon = "mdi:power" };
+            var rebootBtn = new { name = "Reboot", unique_id = $"{deviceIdentifier}_btn_reboot", object_id = $"{deviceIdentifier}_reboot", command_topic = actionTopic, payload_press = "{\"action\": \"reboot\"}", device = deviceInfo, device_class = "restart", icon = "mdi:restart" };
+            var lockBtn = new { name = "Lock", unique_id = $"{deviceIdentifier}_btn_lock", object_id = $"{deviceIdentifier}_lock", command_topic = actionTopic, payload_press = "{\"action\": \"lock\"}", device = deviceInfo, icon = "mdi:lock" };
+            var logoffBtn = new { name = "Logoff", unique_id = $"{deviceIdentifier}_btn_logoff", object_id = $"{deviceIdentifier}_logoff", command_topic = actionTopic, payload_press = "{\"action\": \"logoff\"}", device = deviceInfo, icon = "mdi:logout" };
 
             _logger.LogInformation("Publishing unified HA discovery for {Device}", deviceIdentifier);
             

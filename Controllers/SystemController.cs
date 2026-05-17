@@ -190,4 +190,22 @@ public class SystemController : ControllerBase
         
         return Ok(new { action = finalAction });
     }
+
+    [AcceptVerbs("GET", "POST"), Route("state")]
+    public async Task<IActionResult> ReportState([FromQuery] string state, [FromQuery] string? attributes = null)
+    {
+        if (string.IsNullOrEmpty(state)) return BadRequest("State is required.");
+
+        var machineName = Global.SafeMachineName;
+        var topic = $"homeassistant/select/{machineName}/state";
+        await _mqtt.EnqueueAsync(topic, state, true);
+
+        if (!string.IsNullOrEmpty(attributes))
+        {
+            var attrTopic = $"homeassistant/select/{machineName}/attributes";
+            await _mqtt.EnqueueAsync(attrTopic, attributes, true);
+        }
+        
+        return Ok(new { status = "success" });
+    }
 }

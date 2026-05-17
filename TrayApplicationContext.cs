@@ -24,6 +24,8 @@ public class TrayApplicationContext : ApplicationContext
     private readonly string _token;
 
     private HiddenMessageWindow _messageWindow;
+    private System.Windows.Forms.Timer _serviceMonitorTimer = null!;
+    private bool _hasPromptedServiceDown = false;
 
     public TrayApplicationContext(IServiceProvider services)
     {
@@ -46,6 +48,10 @@ public class TrayApplicationContext : ApplicationContext
 
         _messageWindow = new HiddenMessageWindow();
         _messageWindow.Show();
+
+        _serviceMonitorTimer = new System.Windows.Forms.Timer { Interval = 15000 };
+        _serviceMonitorTimer.Tick += ServiceMonitorTimer_Tick;
+        _serviceMonitorTimer.Start();
 
         InitializeComponent();
     }
@@ -247,9 +253,40 @@ public class TrayApplicationContext : ApplicationContext
 
     private void ExitApplication(object? sender, EventArgs e)
     {
+        _serviceMonitorTimer?.Stop();
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         Application.Exit();
+    }
+
+    private void ServiceMonitorTimer_Tick(object? sender, EventArgs e)
+    {
+        if (!ServiceHelper.IsServiceRunning("MqttAgent"))
+        {
+            if (!_hasPromptedServiceDown)
+            {
+                _hasPromptedServiceDown = true;
+                var res = MessageBox.Show(
+                    "The MQTT.Agent Windows Service has stopped or crashed. Would you like to restart it now?\n\n(The tray app relies on the service to function properly.)", 
+                    "MQTT.Agent Service Stopped", 
+                    MessageBoxButtons.YesNo, 
+                    MessageBoxIcon.Warning);
+
+                if (res == DialogResult.Yes)
+                {
+                    try {
+                        ServiceHelper.StartService("MqttAgent");
+                        MessageBox.Show("Service start requested.", "MQTT.Agent", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    } catch (Exception ex) {
+                        MessageBox.Show($"Failed to start service: {ex.Message}\nTry running the tray as Administrator.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+        }
+        else
+        {
+            _hasPromptedServiceDown = false;
+        }
     }
 }
 

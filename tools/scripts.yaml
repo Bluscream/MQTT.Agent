@@ -867,11 +867,11 @@ blu_pc_notify:
         ovrtoolkit: "{{ via_vr_headset | default(false) }}"
         classic: "{{ classic | default(false) }}"
         callback: "{{ callback | default('') }}"
-    - action: rest_command.blu_pc_execute
-      metadata: {}
-      data: {}
-      enabled: false
     continue_on_error: true
+  - action: rest_command.blu_pc_execute
+    metadata: {}
+    data: {}
+    enabled: false
 blu_pc_logout:
   alias: Blu-PC Logout
   sequence:
