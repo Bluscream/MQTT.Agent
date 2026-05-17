@@ -11,6 +11,7 @@ using System.Windows.Forms;
 using Microsoft.Extensions.DependencyInjection;
 using MqttAgent.Services;
 using System.Security.Principal;
+using System.Runtime.InteropServices;
 
 namespace MqttAgent;
 
@@ -27,6 +28,8 @@ public class TrayApplicationContext : ApplicationContext
     private System.Windows.Forms.Timer _serviceMonitorTimer = null!;
     private bool _hasPromptedServiceDown = false;
 
+    public bool IsBlockShutdownEnabled { get; set; }
+
     public TrayApplicationContext(IServiceProvider services)
     {
         _services = services;
@@ -36,20 +39,13 @@ public class TrayApplicationContext : ApplicationContext
         _httpClient = new HttpClient();
         _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
         
-        // Determine if we are running alongside an existing service
-        if (!int.TryParse(portStr, out var port)) port = 23482;
-        try
-        {
-            var ipGlobalProperties = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties();
-            var listeners = ipGlobalProperties.GetActiveTcpListeners();
-            _isClientOnly = listeners.Any(l => l.Port == port);
-        }
-        catch { _isClientOnly = false; }
+        // Tray is always client-only now, the service is the bridge
+        _isClientOnly = true;
 
-        _messageWindow = new HiddenMessageWindow();
+        _messageWindow = new HiddenMessageWindow(this);
         _messageWindow.Show();
 
-        _serviceMonitorTimer = new System.Windows.Forms.Timer { Interval = 15000 };
+        _serviceMonitorTimer = new System.Windows.Forms.Timer { Interval = 5000 }; // Check every 5 seconds for responsive monitoring
         _serviceMonitorTimer.Tick += ServiceMonitorTimer_Tick;
         _serviceMonitorTimer.Start();
 
@@ -259,10 +255,12 @@ public class TrayApplicationContext : ApplicationContext
         Application.Exit();
     }
 
-    private void ServiceMonitorTimer_Tick(object? sender, EventArgs e)
+    private async void ServiceMonitorTimer_Tick(object? sender, EventArgs e)
     {
-        if (!ServiceHelper.IsServiceRunning("MqttAgent"))
+        bool serviceRunning = ServiceHelper.IsServiceRunning("MqttAgent");
+        if (!serviceRunning)
         {
+            IsBlockShutdownEnabled = false;
             if (!_hasPromptedServiceDown)
             {
                 _hasPromptedServiceDown = true;
@@ -276,6 +274,7 @@ public class TrayApplicationContext : ApplicationContext
                 {
                     try {
                         ServiceHelper.StartService("MqttAgent");
+                        _hasPromptedServiceDown = false;
                         MessageBox.Show("Service start requested.", "MQTT.Agent", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     } catch (Exception ex) {
                         MessageBox.Show($"Failed to start service: {ex.Message}\nTry running the tray as Administrator.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -286,21 +285,55 @@ public class TrayApplicationContext : ApplicationContext
         else
         {
             _hasPromptedServiceDown = false;
+            // Fetch and cache the block status from the service
+            try
+            {
+                var resp = await _httpClient.GetAsync($"{_baseUrl}/api/system/block-status");
+                if (resp.IsSuccessStatusCode)
+                {
+                    var json = await resp.Content.ReadAsStringAsync();
+                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                    IsBlockShutdownEnabled = doc.RootElement.GetProperty("enabled").GetBoolean();
+                }
+            }
+            catch { }
         }
     }
 }
 
 public class HiddenMessageWindow : Form
 {
+    private readonly TrayApplicationContext _context;
     private readonly int _msgShellHook;
     private const int HSHELL_FLASH = 0x8006;
     private const int HSHELL_WINDOWACTIVATED = 4;
     private const int HSHELL_RUDEAPPACTIVATED = 32772;
 
-    public HiddenMessageWindow()
+    private const int WM_QUERYENDSESSION = 0x11;
+    private const int WM_ENDSESSION = 0x16;
+    private const uint ENDSESSION_LOGOFF = 0x80000000;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool ShutdownBlockReasonCreate(IntPtr hWnd, [MarshalAs(UnmanagedType.LPWStr)] string pwszReason);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool ShutdownBlockReasonDestroy(IntPtr hWnd);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    private static extern bool AbortSystemShutdown(string? lpMachineName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetProcessShutdownParameters(uint dwLevel, uint dwFlags);
+
+    public HiddenMessageWindow(TrayApplicationContext context)
     {
+        _context = context;
         this.FormBorderStyle = FormBorderStyle.None;
         this.ShowInTaskbar = false;
+        
+        // Set process priority for shutdown/logoff to highest possible (0x4FF)
+        try { SetProcessShutdownParameters(0x4FF, 0); } catch { }
+
         this.Load += (s, e) =>
         {
             this.Size = new Size(0, 0);
@@ -311,7 +344,29 @@ public class HiddenMessageWindow : Form
 
     protected override void WndProc(ref Message m)
     {
-        if (m.Msg == _msgShellHook)
+        if (m.Msg == WM_QUERYENDSESSION || m.Msg == WM_ENDSESSION)
+        {
+            bool isLogoff = (m.LParam.ToInt64() & ENDSESSION_LOGOFF) != 0;
+            string action = isLogoff ? "Logoff" : "Shutdown";
+
+            if (_context.IsBlockShutdownEnabled)
+            {
+                ShutdownBlockReasonCreate(this.Handle, $"MQTT.Agent has blocked {action} via Home Assistant.");
+                m.Result = IntPtr.Zero; // 0 = block, 1 = allow
+                
+                try
+                {
+                    AbortSystemShutdown(null);
+                }
+                catch { }
+                return;
+            }
+            else
+            {
+                ShutdownBlockReasonDestroy(this.Handle);
+            }
+        }
+        else if (m.Msg == _msgShellHook)
         {
             int wParam = m.WParam.ToInt32();
             if (wParam == HSHELL_FLASH)

@@ -61,7 +61,6 @@ public class TrayStarterService : BackgroundService
                 // Start new tray app
                 var token = Config.Get("token", "-token");
                 var args = $"--tray -token {token}";
-                if (Global.IsMoreStatesEnabled) args += " --more-states";
                 
                 try
                 {

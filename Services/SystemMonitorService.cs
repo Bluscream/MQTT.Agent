@@ -263,7 +263,6 @@ namespace MqttAgent.Services
         private async Task UpdateState()
         {
             string state = "On";
-            bool moreStates = Global.IsMoreStatesEnabled;
             MqttAgent.Models.NeedsAttentionInfo? attentionInfo = null;
 
             if (SystemHelper.IsSafeMode())
@@ -294,24 +293,23 @@ namespace MqttAgent.Services
             {
                 state = "Logged out";
             }
-            else if (moreStates && (attentionInfo = GetAttentionInfo()) != null)
+            else if ((attentionInfo = GetAttentionInfo()) != null)
             {
-                state = "Needs attention";
+                state = "Needs Attention";
             }
-            else if (moreStates && CheckIdle())
+            else if (CheckIdle())
             {
                 state = "Idle";
             }
 
-            if (state == _lastState && state != "Needs attention")
+            if (state == _lastState && state != "Needs Attention")
             {
                 // Periodically update attributes anyway
                 await ReportAttributes();
                 return;
             }
 
-            // If it was already "Needs attention" but the window changed, we still want a new event
-            if (state == _lastState && state == "Needs attention")
+            if (state == _lastState && state == "Needs Attention")
             {
                 if (attentionInfo?.WindowName == _lastAttentionInfo?.WindowName && attentionInfo?.ProcessName == _lastAttentionInfo?.ProcessName)
                 {
@@ -333,7 +331,7 @@ namespace MqttAgent.Services
                 new_state = state
             };
 
-            if (state == "Needs attention" && attentionInfo != null)
+            if (state == "Needs Attention" && attentionInfo != null)
             {
                 eventAttributes = new {
                     old_state = _lastState,

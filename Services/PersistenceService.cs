@@ -169,7 +169,6 @@ namespace MqttAgent.Services
             {
                 // Build binPath including current operational flags
                 string binPath = $"\"{_exePath}\" {Global.Args.Service}";
-                if (Global.IsMoreStatesEnabled) binPath += $" {Global.Args.MoreStates}";
                 if (Global.IsStartTrayEnabled) binPath += $" {Global.Args.StartTray}";
 
                 if (!ServiceHelper.IsServiceInstalled(ServiceName))

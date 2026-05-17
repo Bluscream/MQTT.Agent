@@ -5,7 +5,6 @@ param (
     [switch]$Deploy,
     [switch]$Install,
     [switch]$Start,
-    [switch]$MoreStates,
     [switch]$StartTray,
     [string]$DeployPath = "D:\Scripts\MqttAgent.exe"
 )
@@ -141,7 +140,6 @@ if ($Install) {
     $InstallArgs = @("--install")
     if ($Stop) { $InstallArgs += "--stop" }
     if ($Start) { $InstallArgs += "--start" }
-    if ($MoreStates) { $InstallArgs += "--more-states" }
     if ($StartTray) { $InstallArgs += "--start-tray" }
     
     sudo $TargetExe $InstallArgs
@@ -156,7 +154,6 @@ if ($Start -and -not $Install) {
         Start-Sleep -Seconds 2
         Write-Host "Starting Tray companion..." -ForegroundColor Gray
         $StartArgs = @("--tray", "--token", $Token)
-        if ($MoreStates) { $StartArgs += "--more-states" }
         Start-Process $TargetExe -ArgumentList $StartArgs
     }
 }

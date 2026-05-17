@@ -146,7 +146,6 @@ public static class Program
         builder.Services.AddSingleton<NotificationReceiverService>();
         builder.Services.AddSingleton<ActionExecutorService>();
         builder.Services.AddSingleton<ActionCenterPollerService>();
-        builder.Services.AddSingleton<CameraService>();
         builder.Services.AddSingleton<TrayStarterService>();
 
         if (isService)
@@ -157,10 +156,9 @@ public static class Program
         // Use Global setup flags
         bool install = Global.IsInstall;
         bool uninstall = Global.IsUninstall;
-        bool moreStates = Global.IsMoreStatesEnabled;
         bool isAdmin = Global.IsAdmin;
 
-        if ((install || uninstall || moreStates || Global.IsStart || Global.IsStop) && isAdmin)
+        if ((install || uninstall || Global.IsStart || Global.IsStop) && isAdmin)
         {
             // Create a temporary logger for setup tasks
             using var loggerFactory = LoggerFactory.Create(builder => builder.AddSerilog());
@@ -192,10 +190,6 @@ public static class Program
             {
                 persistence.EnsureServiceSafeBoot();
                 persistence.EnsureFirewallRule(port);
-            }
-            
-            if (moreStates)
-            {
                 persistence.EnsureMoreStatesTriggers();
             }
 
@@ -248,42 +242,22 @@ public static class Program
             return;
         }
         
-        // In tray mode, check if the service is already running.
-        // If so, skip MQTT and background services — tray will operate as HTTP client only.
-        bool serviceAlreadyRunning = isTray && ServiceHelper.IsServiceRunning("MqttAgent");
-        
-        if (!serviceAlreadyRunning)
+        if (!isTray)
         {
             builder.Services.AddHostedService(p => p.GetRequiredService<SystemMonitorService>());
             builder.Services.AddHostedService(p => p.GetRequiredService<NotificationReceiverService>());
             builder.Services.AddHostedService(p => p.GetRequiredService<ActionExecutorService>());
             builder.Services.AddHostedService(p => p.GetRequiredService<ForceActionService>());
             builder.Services.AddHostedService(p => p.GetRequiredService<ActionCenterPollerService>());
-            
-            if (Global.IsMoreStatesEnabled)
-            {
-                builder.Services.AddHostedService(p => p.GetRequiredService<CameraService>());
-            }
             builder.Services.AddHostedService(p => p.GetRequiredService<TrayStarterService>());
-            
-            // Run MQTT only when the service isn't handling it
             builder.Services.AddHostedService(p => (MqttManager)p.GetRequiredService<IMqttManager>());
-        }
-        else
-        {
-            Log.Information("Service is already running. Tray will operate in client-only mode (no MQTT/discovery).");
+            builder.Services.AddHostedService(p => p.GetRequiredService<ShutdownBlockerService>());
         }
 
         builder.Services.Configure<HostOptions>(options =>
         {
             options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
         });
-
-        if (isTray)
-        {
-            // Tray app MUST run the shutdown blocker to handle user session logoff
-            builder.Services.AddHostedService(p => p.GetRequiredService<ShutdownBlockerService>());
-        }
 
         var app = builder.Build();
 
@@ -308,21 +282,10 @@ public static class Program
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            Log.Information("Starting tray mode (client-only: {ClientOnly})...", serviceAlreadyRunning);
+            Log.Information("Starting tray mode (client-only)...");
             
             try
             {
-                if (!serviceAlreadyRunning)
-                {
-                    // Start hosted services manually, skipping the web host itself
-                    var hostedServices = app.Services.GetServices<IHostedService>();
-                    foreach (var service in hostedServices)
-                    {
-                        if (service.GetType().FullName?.Contains("GenericWebHostService") == true) continue;
-                        _ = service.StartAsync(CancellationToken.None);
-                    }
-                }
-
                 Application.Run(new TrayApplicationContext(app.Services));
             }
             catch (Exception ex)

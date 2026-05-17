@@ -14,7 +14,6 @@ namespace MqttAgent.Utils
         {
             public const string Tray = "--tray";
             public const string Service = "--service";
-            public const string MoreStates = "--more-states";
             public const string Install = "--install";
             public const string Uninstall = "--uninstall";
             public const string ScreenshotHelper = "--screenshot-helper";
@@ -29,7 +28,6 @@ namespace MqttAgent.Utils
             public const string Token = "-token";
         }
 
-        public static bool IsMoreStatesEnabled { get; } = Config.GetBool("more-states");
         public static bool IsTrayMode { get; } = Config.GetBool("tray");
         public static bool IsServiceMode { get; } = Config.GetBool("service");
         public static bool IsInstall { get; } = Config.GetBool("install");

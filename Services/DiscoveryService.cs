@@ -38,15 +38,9 @@ namespace MqttAgent.Services
                 sw_version = "1.0.0"
             };
 
-            bool moreStates = Global.IsMoreStatesEnabled;
             var statusOptions = new System.Collections.Generic.List<string> {
-                "On", "Locked", "Logged out", "Updating", "Safe Mode", "Shutting Down", "Logging In", "Logging Out"
+                "On", "Locked", "Logged out", "Updating", "Safe Mode", "Shutting Down", "Logging In", "Logging Out", "Idle", "Needs Attention"
             };
-            if (moreStates)
-            {
-                statusOptions.Add("Idle");
-                statusOptions.Add("Needs Attention");
-            }
 
             // 1. Status Select
             var statusConfig = new
