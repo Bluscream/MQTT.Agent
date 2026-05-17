@@ -129,6 +129,14 @@ public class ProcessService
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr hObject);
 
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool GetTokenInformation(
+        IntPtr TokenHandle,
+        int TokenInformationClass,
+        out IntPtr TokenInformation,
+        uint TokenInformationLength,
+        out uint ReturnLength);
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct STARTUPINFO
     {
@@ -292,10 +300,9 @@ public class ProcessService
     {
         try
         {
-            if (!string.IsNullOrEmpty(asUser) && elevated) throw new ArgumentException("Cannot specify both asUser and elevated.");
-
             Process? process = null;
             IntPtr userToken = IntPtr.Zero;
+            IntPtr linkedToken = IntPtr.Zero;
             IntPtr primaryToken = IntPtr.Zero;
             int? createdProcessId = null;
 
@@ -308,7 +315,24 @@ public class ProcessService
                     if (!NativeMethods.WTSQueryUserToken(sessionId, out userToken)) userToken = TryStealUserToken(sessionId);
                     if (userToken == IntPtr.Zero) throw new Exception($"Failed to get user token for session {sessionId}.");
 
-                    if (!DuplicateTokenEx(userToken, TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY, IntPtr.Zero, SECURITY_IMPERSONATION_LEVEL.SecurityImpersonation, TOKEN_TYPE.TokenPrimary, out primaryToken))
+                    IntPtr tokenToUse = userToken;
+
+                    if (elevated)
+                    {
+                        uint returnLength = 0;
+                        // 19 = TokenLinkedToken
+                        if (GetTokenInformation(userToken, 19, out linkedToken, (uint)IntPtr.Size, out returnLength) && linkedToken != IntPtr.Zero)
+                        {
+                            _logger.LogInformation("[ProcessService] Successfully retrieved elevated Linked Token for user session.");
+                            tokenToUse = linkedToken;
+                        }
+                        else
+                        {
+                            _logger.LogWarning("[ProcessService] Could not retrieve elevated Linked Token (User may not be an Admin or UAC is disabled). Falling back to standard user token.");
+                        }
+                    }
+
+                    if (!DuplicateTokenEx(tokenToUse, TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY, IntPtr.Zero, SECURITY_IMPERSONATION_LEVEL.SecurityImpersonation, TOKEN_TYPE.TokenPrimary, out primaryToken))
                         throw new Exception($"Failed to duplicate token. Error: {Marshal.GetLastWin32Error()}");
 
                     process = CreateProcessInternal(primaryToken, executable, arguments ?? "", out int pid, desktop ?? "winsta0\\default", ParseWindowStyle(windowStyle));
@@ -365,6 +389,7 @@ public class ProcessService
             finally
             {
                 if (primaryToken != IntPtr.Zero) CloseHandle(primaryToken);
+                if (linkedToken != IntPtr.Zero) CloseHandle(linkedToken);
                 if (userToken != IntPtr.Zero) CloseHandle(userToken);
             }
         }

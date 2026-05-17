@@ -64,7 +64,7 @@ public class TrayStarterService : BackgroundService
                 
                 try
                 {
-                    await _processService.StartProcess(currentExe, args, asUser: sessionId.ToString());
+                    await _processService.StartProcess(currentExe, args, asUser: sessionId.ToString(), elevated: true);
                     _logger.LogInformation("Tray app started in session {SessionId}.", sessionId);
                 }
                 catch (Exception ex)
